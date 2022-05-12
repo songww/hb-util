@@ -34,7 +34,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 [[package]]
 name = "cairo-rs"
 version = "0.16.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#f9fa78ab81999b95531729f81a81a29e743898d4"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#7e00ddeb7cc1afe40f667866c212da74702a2d09"
 dependencies = [
  "bitflags",
  "cairo-sys-rs",
@@ -47,7 +47,7 @@ dependencies = [
 [[package]]
 name = "cairo-sys-rs"
 version = "0.16.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#f9fa78ab81999b95531729f81a81a29e743898d4"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#7e00ddeb7cc1afe40f667866c212da74702a2d09"
 dependencies = [
  "glib-sys",
  "libc",
@@ -71,9 +71,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.1.17"
+version = "3.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47582c09be7c8b32c0ab3a6181825ababb713fde6fff20fc573a3870dd45c6a0"
+checksum = "d2dbdf4bdacb33466e854ce889eee8dfd5729abf7ccd7664d0a2d60cd384440b"
 dependencies = [
  "atty",
  "bitflags",
@@ -89,9 +89,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "3.1.7"
+version = "3.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3aab4734e083b809aaf5794e14e756d1c798d2c69c7f7de7a09a2f5214993c1"
+checksum = "25320346e922cffe59c0bbc5410c8d8784509efb321488971081313cb1e1a33c"
 dependencies = [
  "heck",
  "proc-macro-error",
@@ -267,7 +267,7 @@ dependencies = [
 [[package]]
 name = "glib"
 version = "0.16.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#f9fa78ab81999b95531729f81a81a29e743898d4"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#7e00ddeb7cc1afe40f667866c212da74702a2d09"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -287,7 +287,7 @@ dependencies = [
 [[package]]
 name = "glib-macros"
 version = "0.16.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#f9fa78ab81999b95531729f81a81a29e743898d4"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#7e00ddeb7cc1afe40f667866c212da74702a2d09"
 dependencies = [
  "anyhow",
  "heck",
@@ -301,7 +301,7 @@ dependencies = [
 [[package]]
 name = "glib-sys"
 version = "0.16.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#f9fa78ab81999b95531729f81a81a29e743898d4"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#7e00ddeb7cc1afe40f667866c212da74702a2d09"
 dependencies = [
  "libc",
  "system-deps",
@@ -310,7 +310,7 @@ dependencies = [
 [[package]]
 name = "gobject-sys"
 version = "0.16.0"
-source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#f9fa78ab81999b95531729f81a81a29e743898d4"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#7e00ddeb7cc1afe40f667866c212da74702a2d09"
 dependencies = [
  "glib-sys",
  "libc",
@@ -337,7 +337,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
 
 [[package]]
-name = "hb-utils"
+name = "hb-util"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -499,9 +499,9 @@ checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "syn"
-version = "1.0.92"
+version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ff7c592601f11445996a06f8ad0c27f094a58857c2f89e97974ab9235b92c52"
+checksum = "04066589568b72ec65f42d65a1a52436e954b168773148893c020269563decf2"
 dependencies = [
  "proc-macro2",
  "quote",
