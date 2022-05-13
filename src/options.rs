@@ -83,9 +83,6 @@ pub struct Options<const B: usize = 0> {
     #[clap(flatten, next_help_heading = "Font options")]
     pub font_opts: FontOptions,
 
-    #[clap(flatten, next_help_heading = "Variations options")]
-    pub variations: VariationOptions,
-
     #[clap(flatten, next_help_heading = "Shape options")]
     pub text: TextOptions,
 
@@ -179,6 +176,20 @@ pub struct FontOptions {
     #[clap(long, default_value_t = 2)]
     pub ft_load_flags: usize,
 
+    /// Font variations
+    ///
+    /// Variations are set globally. The format for specifying variation settings
+    /// follows.  All valid CSS font-variation-settings values other than 'normal'
+    /// and 'inherited' are also accepted, though, not documented below.
+    ///
+    /// The format is a tag, optionally followed by an equals sign, followed by a
+    /// number. For example:
+    ///
+    ///   "wght=500"
+    ///   "slnt=-7.5"
+    #[clap(long, verbatim_doc_comment)]
+    pub variations: Vec<String>,
+
     #[clap(skip)]
     font: RefCell<Option<FontCache>>,
 
@@ -215,7 +226,7 @@ impl Drop for FontCache {
 
 impl FontOptions {
     pub fn font(&self) -> *mut ffi::hb_font_t {
-        if let Some(cache) = self.font.borrow() {
+        if let Some(cache) = *self.font.borrow() {
             return cache.font;
         }
         assert!(
@@ -252,7 +263,23 @@ impl FontOptions {
             let scale_y: f32 = libm::scalbnf(font_size_y, subpixel_bits);
             ffi::hb_font_set_scale(font, scale_x as i32, scale_y as i32);
 
-            ffi::hb_font_set_variations(font, self.variations, self.variations.len());
+            let variations: Vec<_> = self
+                .variations
+                .iter()
+                .map(|var| {
+                    let mut variation: MaybeUninit<ffi::hb_variation_t> = MaybeUninit::zeroed();
+                    unsafe {
+                        let is_ok = ffi::hb_variation_from_string(
+                            var.as_ptr() as _,
+                            var.len() as _,
+                            variation.as_mut_ptr(),
+                        );
+                        assert_eq!(is_ok, 1);
+                    }
+                    variation.assume_init()
+                })
+                .collect();
+            ffi::hb_font_set_variations(font, variations.as_ptr(), self.variations.len() as _);
 
             let set_font_funcs = if let Some(ref font_funcs_name) = self.font_funcs {
                 let set_font_funcs: Option<FnSetFontFuncs> = None;
@@ -262,7 +289,7 @@ impl FontOptions {
                         break;
                     }
                 }
-                if set_font_funcs.is_empty() {
+                if set_font_funcs.is_none() {
                     panic!("")
                 }
                 set_font_funcs.unwrap()
@@ -331,23 +358,6 @@ pub fn parse_font_ppem(arg: &str) -> anyhow::Result<FontPpem> {
     } else {
         anyhow::bail!("font-ppem argument should be one or two space-separated numbers")
     }
-}
-
-#[derive(Debug, Args)]
-pub struct VariationOptions {
-    /// Font variations
-    ///
-    /// Variations are set globally. The format for specifying variation settings
-    /// follows.  All valid CSS font-variation-settings values other than 'normal'
-    /// and 'inherited' are also accepted, though, not documented below.
-    ///
-    /// The format is a tag, optionally followed by an equals sign, followed by a
-    /// number. For example:
-    ///
-    ///   "wght=500"
-    ///   "slnt=-7.5"
-    #[clap(long, verbatim_doc_comment)]
-    pub variations: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -543,20 +553,29 @@ impl FromStr for OutputFormat {
     }
 }
 
-#[derive(Debug, Args)]
+#[derive(Args)]
 pub struct OutputAndFormatOptions {
     /// Set output file-name (default: stdout)
     #[clap(long)]
-    output_file: Option<String>,
+    pub output_file: Option<String>,
 
     #[clap(long, verbatim_doc_comment)]
     /// Set output format
     ///
     /// Supported output formats are: ansi/png/svg/pdf/ps/eps
-    output_format: Option<OutputFormat>,
+    pub output_format: Option<OutputFormat>,
 
     #[clap(skip)]
-    output_fp: Option<Box<dyn std::io::Write>>,
+    pub output_fp: Option<Box<dyn std::io::Write>>,
+}
+
+impl std::fmt::Debug for OutputAndFormatOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OutputAndFormatOptions")
+            .field("output_file", &self.output_file)
+            .field("output_format", &self.output_format)
+            .finish()
+    }
 }
 
 #[derive(Debug)]

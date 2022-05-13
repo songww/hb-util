@@ -1,7 +1,7 @@
-pub trait Consumer: Default {
+pub trait Consumer {
     type Opts;
-    unsafe fn init<O>(&mut self, options: &O);
-    unsafe fn consume_line<O>(&self, options: &O) -> anyhow::Result<bool>;
-    unsafe fn finish(&self);
+    unsafe fn with_options(options: &Self::Opts) -> Self;
+    unsafe fn consume_line(&self, options: &Self::Opts) -> anyhow::Result<bool>;
     unsafe fn new_line(&self) {}
+    unsafe fn finish(&self, options: &Self::Opts);
 }

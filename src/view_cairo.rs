@@ -2,6 +2,8 @@ use std::mem::MaybeUninit;
 
 use harfbuzz_sys as ffi;
 
+use crate::helper_cairo::{create_cairo_context, create_scaled_font, UserFontFaceExt};
+
 const SUBPIXEL_BITS: i32 = 6;
 
 use super::options::{FontExtents, FontOptions, Options, OutputAndFormatOptions, ViewOptions};
@@ -43,7 +45,7 @@ impl ViewCairo {
     unsafe fn finish(&mut self, buffer: &mut ffi::hb_buffer_t, opts: &mut Options) {
         self.render(opts);
     }
-    unsafe fn render(&self, opts: &mut Options) {
+    unsafe fn render(&self, opts: &mut Options) -> anyhow::Result<()> {
         let is_vertical = crate::hb_direction_is_vertical(self.direction);
         let vert = if is_vertical { 1. } else { 0. };
         let horiz = if is_vertical { 0. } else { 1. };
@@ -99,7 +101,8 @@ impl ViewCairo {
             }
         }
 
-        let scaled_font = opts.font_opts.create_scaled_font();
+        let scaled_font = create_scaled_font(&opts.font_opts)?;
+        // create_scaled_font
 
         let content = if scaled_font.has_color() {
             cairo::Content::Color
@@ -113,7 +116,7 @@ impl ViewCairo {
             self,
             self,
             content,
-        );
+        )?;
 
         cr.set_scaled_font(&scaled_font);
 
@@ -136,15 +139,16 @@ impl ViewCairo {
                 todo!()
             }
 
-            if false && cr.surface().type_() == cairo::SurfaceType::Image {
+            if false && cr.target().type_() == cairo::SurfaceType::Image {
                 // cairo_show_glyphs dosen't supported subpixel positioning
                 cr.glyph_path(&l.glyphs);
                 cr.fill();
             } else if !l.text_clusters.is_empty() {
-                cr.show_text_glyphs(&l.utf8, &l.glyphs, &l.text_clusters, &l.cluster_flags);
+                cr.show_text_glyphs(&l.utf8, &l.glyphs, &l.text_clusters, l.cluster_flags);
             } else {
                 cr.show_glyphs(&l.glyphs);
             }
         }
+        Ok(())
     }
 }

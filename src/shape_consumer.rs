@@ -10,14 +10,6 @@ struct ShapeConsumer<Output> {
     output: Output,
 }
 
-impl<Output: Consumer> ShapeConsumer<Output> {
-    unsafe fn new<O>(opts: &O) -> ShapeConsumer<Output> {
-        let buffer = ffi::hb_buffer_create();
-        let output = Output::new(buffer, opts);
-        Self { buffer, output }
-    }
-}
-
 impl<T> Drop for ShapeConsumer<T> {
     fn drop(&mut self) {
         unsafe {
@@ -26,8 +18,14 @@ impl<T> Drop for ShapeConsumer<T> {
     }
 }
 
-impl<Out: Output> Consumer for ShapeConsumer<Out> {
+impl<Output: Consumer> ShapeConsumer<Output> {
     type Opts = ShapeOptions;
+
+    fn with_options(opts: &ShapeOptions) -> ShapeConsumer<Output> {
+        let buffer = unsafe { ffi::hb_buffer_create() };
+        let output = Output::new(buffer, opts);
+        Self { buffer, output }
+    }
 
     unsafe fn consume_line<Opts>(&mut self, opts: &Opts) -> anyhow::Result<bool> {
         let text = opts.readline();

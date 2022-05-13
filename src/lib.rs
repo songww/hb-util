@@ -1,3 +1,5 @@
+#![feature(inherent_associated_types)]
+
 pub mod application;
 pub mod consumer;
 pub mod font_text;

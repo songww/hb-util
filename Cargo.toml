@@ -13,9 +13,13 @@ libm = "0.2"
 anyhow = "1"
 once_cell = "1"
 clap = { version = "3", features = ["derive", "unicode"] }
-harfbuzz-sys = { git = "https://github.com/songww/rust-harfbuzz", branch = "hb-latest" }
 
 [dependencies.cairo-rs]
 git = "https://github.com/gtk-rs/gtk-rs-core"
 branch = "master"
 features = ["png"]
+
+[dependencies.harfbuzz-sys]
+git = "https://github.com/songww/rust-harfbuzz"
+branch = "hb-latest"
+features = ["build-native-harfbuzz"]
