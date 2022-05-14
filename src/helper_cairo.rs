@@ -377,7 +377,7 @@ fn render_color_glyph_png(
     let height = surface.height();
 
     let hb_extents = unsafe {
-        let mut hb_extents = MaybeUninit::uninit();
+        let mut hb_extents = MaybeUninit::zeroed();
         if ffi::hb_font_get_glyph_extents(font, glyph as _, hb_extents.as_mut_ptr()) == 0 {
             return Err(cairo::Error::UserFontNotImplemented);
         }
@@ -612,7 +612,7 @@ fn render_color_glyph(
 fn create_user_font_face(font_opts: &FontOptions) -> anyhow::Result<cairo::UserFontFace> {
     let cairo_face = cairo::UserFontFace::create()?;
     let hb_font = font_opts.font();
-    cairo_face.set_user_data(&HB_CAIRO_FONT_KEY, Rc::new(HbFont(hb_font)));
+    cairo_face.set_user_data(&HB_CAIRO_FONT_KEY, Rc::new(HbFont(hb_font)))?;
     cairo_face.set_render_glyph_func(render_glyph);
     unsafe {
         let face = ffi::hb_font_get_face(hb_font);

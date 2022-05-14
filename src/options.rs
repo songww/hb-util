@@ -598,18 +598,18 @@ impl ShapeOpts for Options {
         font: *mut ffi::hb_font_t,
         buffer: *mut ffi::hb_buffer_t,
     ) -> anyhow::Result<bool> {
-        let mut text_buffer: *mut ffi::hb_buffer_t = std::ptr::null_mut();
-        if self.shape.verify {
-            text_buffer = ffi::hb_buffer_create();
-            ffi::hb_buffer_append(text_buffer, buffer, 0, u32::MAX);
-        }
+        // let mut text_buffer: *mut ffi::hb_buffer_t = std::ptr::null_mut();
+        // if self.shape.verify {
+        //     text_buffer = ffi::hb_buffer_create();
+        //     ffi::hb_buffer_append(text_buffer, buffer, 0, u32::MAX);
+        // }
 
         let features: Vec<_> = self
             .features
             .features
             .iter()
             .map(|feat| {
-                let mut feature = MaybeUninit::uninit();
+                let mut feature = MaybeUninit::zeroed();
                 ffi::hb_feature_from_string(
                     feat.as_ptr() as _,
                     feat.len() as _,
@@ -619,20 +619,22 @@ impl ShapeOpts for Options {
             })
             .collect();
 
-        let shapers: Vec<*const std::os::raw::c_char> =
+        let mut shapers: Vec<*const std::os::raw::c_char> =
             self.shape.shapers.iter().map(|s| s.as_ptr()).collect();
-        if ffi::hb_shape_full(
+        shapers.push(std::ptr::null());
+        let ret = ffi::hb_shape_full(
             font,
             buffer,
             features.as_ptr(),
             features.len() as _,
             shapers.as_ptr(),
-        ) == 0
-        {
-            if !text_buffer.is_null() {
-                ffi::hb_buffer_destroy(text_buffer);
-            }
-            anyhow::bail!("all shapers failed");
+        );
+        if ret == 0 {
+            anyhow::bail!("Shaping failed");
+        }
+
+        if self.shape.normalize_glyphs {
+            ffi::hb_buffer_normalize_glyphs(buffer);
         }
         Ok(true)
     }

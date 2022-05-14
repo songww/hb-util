@@ -65,7 +65,7 @@ impl ViewCairo {
         let font_extents = if let Some(extents) = opts.view.font_extents {
             extents
         } else {
-            let mut hb_extents = MaybeUninit::uninit();
+            let mut hb_extents = MaybeUninit::zeroed();
             ffi::hb_font_get_extents_for_direction(font, self.direction, hb_extents.as_mut_ptr());
             let hb_extents = hb_extents.assume_init();
             FontExtents {
