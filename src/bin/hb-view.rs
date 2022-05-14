@@ -1,19 +1,22 @@
-/*
 use clap::Parser;
 
-use hb_utils::view_cairo::ViewCairo;
+use hb_util as lib;
+
+use lib::font_text::FontText;
+use lib::shape_consumer::ShapeConsumer;
+use lib::view_cairo::ViewCairo;
 
 const DEFAULT_FONT_SIZE: usize = 256;
 const SUBPIXEL_BITS: usize = 6;
 
 fn main() {
-    let driver = FontText::<ShapeConsumer<ViewCairo>, DEFAULT_FONT_SIZE, SUBPIXEL_BITS>::new();
-    // driver.main();
-    let options = hb_utils::options::Options::parse();
-    println!("{:?}", options);
+    let mut driver = FontText::<ShapeConsumer<ViewCairo>>::new();
+    driver.run();
+    // let options = hb_utils::options::Options::parse();
+    // println!("{:?}", options);
 }
-*/
 
+/*
 fn main() {
     use harfbuzz_sys as ffi;
     println!("shapers:");
@@ -32,3 +35,4 @@ fn main() {
         }
     }
 }
+*/

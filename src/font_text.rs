@@ -1,26 +1,25 @@
-use clap::StructOpt;
+use clap::Parser as ClapApp;
 
-use crate::options::Options;
+use crate::consumer::Consumer;
 
-pub struct FontText<Consumer, FontOptions, TextOptions> {
-    text_opts: TextOptions,
-    font_opts: FontOptions,
-    consumer: Consumer,
+pub struct FontText<Cons: Consumer> {
+    cons: Cons,
+    opts: Cons::Opts,
 }
 
-impl<Consumer, FontOptions, TextOptions> FontText<Consumer, FontOptions, TextOptions> {
+impl<Cons: Consumer> FontText<Cons> {
     pub fn new() -> Self {
-        Options::try_parse().unwrap();
-        todo!()
+        let opts = Cons::Opts::parse();
+        let cons = Cons::with_options(&opts);
+        Self { opts, cons }
     }
 
-    pub fn main(&self) {
+    pub fn run(&mut self) {
         unsafe {
-            // self.consumer.init()
-            while let Some(true) = self.consumer.consume_line() {
+            while let Ok(true) = self.cons.consume_line(&self.opts) {
                 //
             }
-            self.consumer.finish();
+            self.cons.finish(&self.opts);
         }
     }
 }

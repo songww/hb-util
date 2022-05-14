@@ -11,8 +11,11 @@ impl Drop for HbFont {
     }
 }
 impl HbFont {
-    fn as_ptr(&self) -> *mut ffi::hb_font_t {
+    pub fn as_ptr(&self) -> *mut ffi::hb_font_t {
         self.0
+    }
+    pub unsafe fn from_raw(raw: *mut ffi::hb_font_t) -> Self {
+        Self(raw)
     }
 }
 
@@ -24,7 +27,7 @@ pub struct HelperCairoLine {
 }
 
 impl HelperCairoLine {
-    pub fn advance(&mut self) -> (f64, f64) {
+    pub fn advance(&self) -> (f64, f64) {
         let glyph = self.glyphs.last().unwrap();
         (glyph.x(), glyph.y())
     }
@@ -164,11 +167,12 @@ unsafe extern "C" fn cubic_to(
 
 unsafe extern "C" fn close_path(
     dfuncs: *mut ffi::hb_draw_funcs_t,
-    cr: *mut cairo::ffi::cairo_t,
+    cr: *mut std::os::raw::c_void,
     st: *mut ffi::hb_draw_state_t,
     _: *mut std::ffi::c_void,
 ) {
-    let cr = cairo::Context::from_raw_none(cr);
+    // cr: *mut cairo::ffi::cairo_t,
+    let cr = cairo::Context::from_raw_none(cr as _);
     cr.close_path();
 }
 
@@ -180,7 +184,7 @@ static DFUNCS: once_cell::sync::Lazy<DrawFuncs> = once_cell::sync::Lazy::new(|| 
     let dfuncs = ffi::hb_draw_funcs_create();
     ffi::hb_draw_funcs_set_move_to_func(
         dfuncs,
-        Some(std::mem::transmute(move_to)),
+        Some(std::mem::transmute(move_to as *const ())),
         std::ptr::null_mut(),
         None,
     );
@@ -192,22 +196,17 @@ static DFUNCS: once_cell::sync::Lazy<DrawFuncs> = once_cell::sync::Lazy::new(|| 
     );
     ffi::hb_draw_funcs_set_cubic_to_func(
         dfuncs,
-        Some(std::mem::transmute(cubic_to)),
+        Some(std::mem::transmute(cubic_to as *const ())),
         std::ptr::null_mut(),
         None,
     );
-    ffi::hb_draw_funcs_set_close_path_func(
-        dfuncs,
-        Some(std::mem::transmute(close_path)),
-        std::ptr::null_mut(),
-        None,
-    );
+    ffi::hb_draw_funcs_set_close_path_func(dfuncs, Some(close_path), std::ptr::null_mut(), None);
     ffi::hb_draw_funcs_make_immutable(dfuncs);
     DrawFuncs(dfuncs)
 });
 
 unsafe extern "C" fn cairo_draw_funcs() -> *mut ffi::hb_draw_funcs_t {
-    unsafe { DFUNCS.0 }
+    DFUNCS.0
 }
 
 fn render_glyph(
@@ -245,7 +244,7 @@ unsafe extern "C" fn _render_glyph(
     scaled_font: *mut cairo::ffi::cairo_scaled_font_t,
     glyph: u32,
     cr: *mut cairo::ffi::cairo_t,
-    extents: *const cairo::ffi::cairo_text_extents_t,
+    _extents: *mut cairo::ffi::cairo_text_extents_t,
 ) -> cairo::ffi::cairo_status_t {
     let font_face = cairo::ffi::cairo_scaled_font_get_font_face(scaled_font);
     let font = cairo::ffi::cairo_font_face_get_user_data(
@@ -269,16 +268,17 @@ unsafe extern "C" fn _hb_blob_read_func(
     data: *mut u8,
     length: u32,
 ) -> cairo::ffi::cairo_status_t {
-    if ffi::hb_blob_get_length(src) < length {
+    let blob_length = ffi::hb_blob_get_length(src);
+    if blob_length < length {
         return cairo::ffi::STATUS_READ_ERROR;
     }
-    let mut len = 0;
+    let mut len = length;
     std::ptr::copy_nonoverlapping(
         ffi::hb_blob_get_data(src, &mut len),
         data as *mut i8,
         length as usize,
     );
-    src = src.add(length as usize);
+    *src = *ffi::hb_blob_create_sub_blob(src, length, blob_length - length);
     cairo::ffi::STATUS_SUCCESS
 }
 
@@ -342,7 +342,7 @@ fn render_color_glyph_png(
     scaled_font: &cairo::ScaledFont,
     glyph: std::os::raw::c_ulong,
     cr: &cairo::Context,
-    extents: &mut cairo::TextExtents,
+    _extents: &mut cairo::TextExtents,
 ) -> cairo::Result<()> {
     let font_face = scaled_font.font_face();
     let font = font_face.user_data(&HB_CAIRO_FONT_KEY).unwrap();
@@ -364,7 +364,7 @@ fn render_color_glyph_png(
 
     let surface = unsafe {
         let surface = cairo::ffi::cairo_image_surface_create_from_png_stream(
-            Some(std::mem::transmute(_hb_blob_read_func)),
+            Some(std::mem::transmute(_hb_blob_read_func as *const ())),
             blob as _,
         );
 
@@ -511,7 +511,7 @@ fn render_color_glyph_layers(
         return Err(cairo::Error::UserFontNotImplemented);
     }
 
-    let layers: [ffi::hb_ot_color_layer_t; 16] = [ffi::hb_ot_color_layer_t {
+    let mut layers: [ffi::hb_ot_color_layer_t; 16] = [ffi::hb_ot_color_layer_t {
         color_index: 0,
         glyph: 0,
     }; 16];
@@ -530,7 +530,7 @@ fn render_color_glyph_layers(
         }
         for i in 0..len {
             let mut color: ffi::hb_color_t = 0;
-            let clen = 1;
+            let mut clen = 1;
             let color_index = layers[i as usize].color_index;
             let is_foreground = color_index == 65535;
             if !is_foreground {
@@ -629,13 +629,14 @@ fn create_ft_font_face(font_opts: &FontOptions) -> anyhow::Result<cairo::FontFac
 
 fn use_hb_draw() -> bool {
     let env = std::env::var("HB_DRAW");
-    match env.map(|v| v.as_str()) {
-        Ok("1" | "true") => true,
-        Ok(_) => false,
-        Err(_) => {
-            let cr_version = cairo::Version::new();
-            cr_version.major() >= 1 && cr_version.minor() >= 17 && cr_version.micro() >= 5
+    if let Ok(env) = env.as_ref() {
+        match env.as_str() {
+            "1" | "true" => true,
+            _ => false,
         }
+    } else {
+        let cr_version = cairo::Version::new();
+        cr_version.major() >= 1 && cr_version.minor() >= 17 && cr_version.micro() >= 5
     }
 }
 
@@ -668,27 +669,48 @@ pub fn create_scaled_font(font_opts: &FontOptions) -> anyhow::Result<cairo::Scal
 
 static HB_CAIRO_FONT_KEY: cairo::UserDataKey<HbFont> = cairo::UserDataKey::new();
 
-pub trait UserFontFaceExt {
-    #[inline(always)]
+pub trait ScaledFontExt {
     fn has_data(&self) -> bool;
     fn has_color(&self) -> bool;
 }
 
-impl UserFontFaceExt for cairo::UserFontFace {
-    #[inline(always)]
+impl ScaledFontExt for cairo::ScaledFont {
     fn has_data(&self) -> bool {
         self.user_data(&HB_CAIRO_FONT_KEY).is_some()
     }
-
-    #[inline(always)]
     fn has_color(&self) -> bool {
-        let font = self.user_data(&HB_CAIRO_FONT_KEY).unwrap();
-        unsafe {
-            let face = ffi::hb_font_get_face(font.as_ptr());
-            ffi::hb_ot_color_has_png(face) == 1 || ffi::hb_ot_color_has_layers(face) == 1
+        if let Some(hbfont) = self.font_face().user_data(&HB_CAIRO_FONT_KEY) {
+            unsafe {
+                let hbface = ffi::hb_font_get_face(hbfont.as_ptr());
+                ffi::hb_ot_color_has_png(hbface) == 1 || ffi::hb_ot_color_has_layers(hbface) == 1
+            }
+        } else {
+            false
         }
     }
 }
+
+// pub trait UserFontFaceExt {
+//     #[inline(always)]
+//     fn has_data(&self) -> bool;
+//     // fn has_color(&self) -> bool;
+// }
+//
+// impl UserFontFaceExt for cairo::UserFontFace {
+//     #[inline(always)]
+//     fn has_data(&self) -> bool {
+//         self.user_data(&HB_CAIRO_FONT_KEY).is_some()
+//     }
+//
+//     #[inline(always)]
+//     fn has_color(&self) -> bool {
+//         let font = self.user_data(&HB_CAIRO_FONT_KEY).unwrap();
+//         unsafe {
+//             let face = ffi::hb_font_get_face(font.as_ptr());
+//             ffi::hb_ot_color_has_png(face) == 1 || ffi::hb_ot_color_has_layers(face) == 1
+//         }
+//     }
+// }
 
 enum ImageProtocol {
     None = 0,

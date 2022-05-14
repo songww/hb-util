@@ -2,39 +2,41 @@ use std::mem::MaybeUninit;
 
 use harfbuzz_sys as ffi;
 
-use crate::helper_cairo::{create_cairo_context, create_scaled_font, UserFontFaceExt};
+use crate::helper_cairo::{
+    create_cairo_context, create_scaled_font, HelperCairoLine, ScaledFontExt,
+};
+use crate::options::{FontExtents, Options};
+use crate::output::Output;
 
 const SUBPIXEL_BITS: i32 = 6;
-
-use super::options::{FontExtents, FontOptions, Options, OutputAndFormatOptions, ViewOptions};
-use crate::helper_cairo::HelperCairoLine;
 
 pub struct ViewCairo {
     scale_bits: i32,
     direction: ffi::hb_direction_t,
     lines: Vec<HelperCairoLine>,
-    opts: Options,
-    // view_opts: ViewOptions,
-    // out_opts: OutputAndFormatOptions,
 }
 
-impl ViewCairo {
-    fn new(buffer: *mut ffi::hb_buffer_t, opts: Options) -> ViewCairo {
+impl Output for ViewCairo {
+    type Opts = Options;
+    fn create(_buffer: *mut ffi::hb_buffer_t, _opts: &Options) -> ViewCairo {
         ViewCairo {
             scale_bits: SUBPIXEL_BITS,
             direction: ffi::HB_DIRECTION_INVALID,
             lines: Vec::new(),
-            opts,
         }
     }
-}
 
-impl ViewCairo {
     fn new_line(&self) {}
-    fn consume_text(&mut self, buffer: &mut ffi::hb_buffer_t, text: &str, utf8_clusters: bool) {}
-    unsafe fn consume_glyph(
+    unsafe fn consume_text(
         &mut self,
-        buffer: &mut ffi::hb_buffer_t,
+        _buffer: *mut ffi::hb_buffer_t,
+        _text: &str,
+        _utf8_clusters: bool,
+    ) {
+    }
+    unsafe fn consume_glyphs(
+        &mut self,
+        buffer: *mut ffi::hb_buffer_t,
         text: &str,
         utf8_clusters: bool,
     ) {
@@ -42,10 +44,13 @@ impl ViewCairo {
         let l = HelperCairoLine::from_buffer(buffer, text, self.scale_bits, utf8_clusters);
         self.lines.push(l);
     }
-    unsafe fn finish(&mut self, buffer: &mut ffi::hb_buffer_t, opts: &mut Options) {
+    unsafe fn finish(&mut self, _buffer: *mut ffi::hb_buffer_t, opts: &Options) {
         self.render(opts);
     }
-    unsafe fn render(&self, opts: &mut Options) -> anyhow::Result<()> {
+}
+
+impl ViewCairo {
+    unsafe fn render(&self, opts: &Options) -> anyhow::Result<()> {
         let is_vertical = crate::hb_direction_is_vertical(self.direction);
         let vert = if is_vertical { 1. } else { 0. };
         let horiz = if is_vertical { 0. } else { 1. };
@@ -63,7 +68,7 @@ impl ViewCairo {
 
         let font = opts.font_opts.font();
 
-        let font_extents = if let Some(extents) = opts.view.font_extents.take() {
+        let font_extents = if let Some(extents) = opts.view.font_extents {
             extents
         } else {
             let mut hb_extents = MaybeUninit::uninit();
@@ -102,7 +107,6 @@ impl ViewCairo {
         }
 
         let scaled_font = create_scaled_font(&opts.font_opts)?;
-        // create_scaled_font
 
         let content = if scaled_font.has_color() {
             cairo::Content::Color
@@ -113,8 +117,8 @@ impl ViewCairo {
         let cr = create_cairo_context(
             w + opts.view.margin.l + opts.view.margin.r,
             h + opts.view.margin.t + opts.view.margin.b,
-            self,
-            self,
+            &opts.view,
+            &opts.output,
             content,
         )?;
 

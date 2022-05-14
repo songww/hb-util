@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -6,6 +6,9 @@ use std::{cell::RefCell, os::unix::prelude::OsStringExt};
 
 use clap::{ArgEnum, Args, Parser};
 use harfbuzz_sys as ffi;
+use once_cell::sync::OnceCell;
+
+use crate::helper_cairo::HbFont;
 
 const FONT_SIZE_UPEM: usize = 0x7FFFFFFF;
 const FONT_SIZE_NONE: usize = 0;
@@ -100,13 +103,13 @@ pub struct Options<const B: usize = 0> {
 }
 
 #[derive(Debug)]
-struct FontSize {
+pub struct FontSize {
     pub x: f32,
     pub y: f32,
 }
 
 #[derive(Debug)]
-struct FontPpem {
+pub struct FontPpem {
     pub x: u32,
     pub y: u32,
 }
@@ -142,8 +145,8 @@ static SUPPORTED_FONT_FUNCS: &'static [SetFontFuncs] = &[
 #[derive(Debug, Args)]
 pub struct FontOptions {
     /// Set font file-name
-    #[clap(long, parse(from_os_str))]
-    pub font_file: PathBuf,
+    #[clap(long)]
+    pub font_file: String,
 
     /// Set face index (default: 0)
     #[clap(long, default_value_t = 0)]
@@ -226,18 +229,16 @@ impl Drop for FontCache {
 
 impl FontOptions {
     pub fn font(&self) -> *mut ffi::hb_font_t {
-        if let Some(cache) = *self.font.borrow() {
+        if let Some(ref cache) = *self.font.borrow() {
             return cache.font;
         }
         assert!(
-            self.font_file.exists(),
+            PathBuf::from(&self.font_file).exists(),
             "{}: Failed reading file",
-            self.font_file.display()
+            self.font_file
         );
-        let mut bytes = self.font_file.into_os_string().into_vec();
-        bytes.extend(b"\0");
         let cache = unsafe {
-            let cstr = CStr::from_bytes_with_nul_unchecked(&bytes);
+            let cstr = CString::new(self.font_file.clone()).unwrap();
             let blob = ffi::hb_blob_create_from_file_or_fail(cstr.as_ptr());
             let face = ffi::hb_face_create(blob, self.face_index as _);
             let font = ffi::hb_font_create(face);
@@ -268,21 +269,19 @@ impl FontOptions {
                 .iter()
                 .map(|var| {
                     let mut variation: MaybeUninit<ffi::hb_variation_t> = MaybeUninit::zeroed();
-                    unsafe {
-                        let is_ok = ffi::hb_variation_from_string(
-                            var.as_ptr() as _,
-                            var.len() as _,
-                            variation.as_mut_ptr(),
-                        );
-                        assert_eq!(is_ok, 1);
-                    }
+                    let is_ok = ffi::hb_variation_from_string(
+                        var.as_ptr() as _,
+                        var.len() as _,
+                        variation.as_mut_ptr(),
+                    );
+                    assert_eq!(is_ok, 1);
                     variation.assume_init()
                 })
                 .collect();
             ffi::hb_font_set_variations(font, variations.as_ptr(), self.variations.len() as _);
 
             let set_font_funcs = if let Some(ref font_funcs_name) = self.font_funcs {
-                let set_font_funcs: Option<FnSetFontFuncs> = None;
+                let mut set_font_funcs: Option<FnSetFontFuncs> = None;
                 for font_funcs in SUPPORTED_FONT_FUNCS.iter() {
                     if font_funcs.name == font_funcs_name {
                         set_font_funcs.replace(font_funcs.fnptr);
@@ -308,7 +307,7 @@ impl FontOptions {
 
         self.font.replace(Some(cache));
 
-        self.font.borrow().unwrap().font
+        self.font.borrow().as_ref().unwrap().font
     }
 }
 
@@ -360,6 +359,16 @@ pub fn parse_font_ppem(arg: &str) -> anyhow::Result<FontPpem> {
     }
 }
 
+pub trait FontOpts {
+    fn font(&self) -> HbFont;
+}
+
+impl FontOpts for Options {
+    fn font(&self) -> HbFont {
+        unsafe { HbFont::from_raw(ffi::hb_font_reference(self.font_opts.font())) }
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct TextOptions {
     /// Set input text
@@ -389,25 +398,60 @@ pub struct TextOptions {
 }
 
 impl TextOptions {
-    pub fn valida(&mut self) {
-        let text: String = if let Some(ref path) = self.text_file {
-            std::fs::read_to_string(path).unwrap()
-        } else if !self.unicodes.is_empty() {
-            self.unicodes
-                .iter()
-                .map(|u| char::try_from(*u).unwrap())
-                .collect()
-        } else if let Some(ref text) = self.text {
-            text.to_string()
-        } else {
-            panic!("None of text or unicodes or text-file provided.");
-        };
+    pub fn read(&mut self) {
+        static TEXT: OnceCell<String> = OnceCell::new();
+        let text = TEXT
+            .get_or_try_init(|| {
+                if let Some(ref path) = self.text_file {
+                    Ok(std::fs::read_to_string(path)?)
+                } else if !self.unicodes.is_empty() {
+                    let s = self
+                        .unicodes
+                        .iter()
+                        .map(|u| char::try_from(*u).unwrap())
+                        .collect();
+                    Ok(s)
+                } else if let Some(ref text) = self.text {
+                    Ok(text.to_string())
+                } else {
+                    anyhow::bail!("None of text or unicodes or text-file provided.");
+                }
+            })
+            .unwrap();
         self.lines.replace(Some(text.lines()));
     }
 
     pub fn readline(&self) -> Option<&'static str> {
         assert!(self.lines.borrow().is_some());
-        self.lines.borrow_mut().map(|lines| lines.next()).unwrap()
+        self.lines
+            .borrow_mut()
+            .as_mut()
+            .map(|lines| lines.next())
+            .unwrap()
+    }
+}
+
+pub trait TextOpts {
+    fn text_before(&self) -> Option<&str>;
+    fn text_after(&self) -> Option<&str>;
+
+    fn read(&mut self);
+    fn readline(&self) -> Option<&'static str>;
+}
+
+impl TextOpts for Options {
+    fn text_before(&self) -> Option<&str> {
+        self.text.text_before.as_ref().map(|v| v.as_str())
+    }
+    fn text_after(&self) -> Option<&str> {
+        self.text.text_after.as_ref().map(|v| v.as_str())
+    }
+
+    fn read(&mut self) {
+        self.text.read();
+    }
+    fn readline(&self) -> Option<&'static str> {
+        self.text.readline()
     }
 }
 
@@ -487,6 +531,92 @@ fn parse_shapers(arg: &str) -> anyhow::Result<std::ffi::CString> {
     anyhow::bail!("Unknown or unsupported shaper: {}", arg)
 }
 
+pub trait ShapeOpts {
+    fn utf8_clusters(&self) -> bool;
+    fn verify(&self) -> bool;
+    fn num_iterations(&self) -> usize;
+
+    unsafe fn populate_buffer(
+        &self,
+        buffer: *mut ffi::hb_buffer_t,
+        text: &str,
+        text_before: Option<&str>,
+        text_after: Option<&str>,
+    );
+    unsafe fn shape(
+        &self,
+        font: *mut ffi::hb_font_t,
+        buffer: *mut ffi::hb_buffer_t,
+    ) -> anyhow::Result<bool>;
+}
+
+impl ShapeOpts for Options {
+    fn utf8_clusters(&self) -> bool {
+        self.shape.utf8_clusters
+    }
+    fn verify(&self) -> bool {
+        self.shape.verify
+    }
+    fn num_iterations(&self) -> usize {
+        self.shape.num_iterations
+    }
+
+    unsafe fn populate_buffer(
+        &self,
+        buffer: *mut ffi::hb_buffer_t,
+        text: &str,
+        text_before: Option<&str>,
+        text_after: Option<&str>,
+    ) {
+        self.shape
+            .populate_buffer(buffer, text, text_before, text_after)
+    }
+
+    unsafe fn shape(
+        &self,
+        font: *mut ffi::hb_font_t,
+        buffer: *mut ffi::hb_buffer_t,
+    ) -> anyhow::Result<bool> {
+        let mut text_buffer: *mut ffi::hb_buffer_t = std::ptr::null_mut();
+        if self.shape.verify {
+            text_buffer = ffi::hb_buffer_create();
+            ffi::hb_buffer_append(text_buffer, buffer, 0, u32::MAX);
+        }
+
+        let features: Vec<_> = self
+            .features
+            .features
+            .iter()
+            .map(|feat| {
+                let mut feature = MaybeUninit::uninit();
+                ffi::hb_feature_from_string(
+                    feat.as_ptr() as _,
+                    feat.len() as _,
+                    feature.as_mut_ptr(),
+                );
+                feature.assume_init()
+            })
+            .collect();
+
+        let shapers: Vec<*const std::os::raw::c_char> =
+            self.shape.shapers.iter().map(|s| s.as_ptr()).collect();
+        if ffi::hb_shape_full(
+            font,
+            buffer,
+            features.as_ptr(),
+            features.len() as _,
+            shapers.as_ptr(),
+        ) == 0
+        {
+            if !text_buffer.is_null() {
+                ffi::hb_buffer_destroy(text_buffer);
+            }
+            anyhow::bail!("all shapers failed");
+        }
+        Ok(true)
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct FeatureOptions {
     /// Font features
@@ -528,7 +658,7 @@ pub struct FeatureOptions {
     pub features: Vec<String>,
 }
 
-#[derive(Clone, Debug, ArgEnum)]
+#[derive(Copy, Clone, Debug, ArgEnum)]
 pub enum OutputFormat {
     ANSI,
     PNG,
@@ -578,7 +708,7 @@ impl std::fmt::Debug for OutputAndFormatOptions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct FontExtents {
     pub ascent: f64,
     pub descent: f64,
@@ -780,51 +910,5 @@ impl ShapeOptions {
         }
 
         self.setup_buffer(buffer);
-    }
-}
-
-impl Options {
-    pub unsafe fn shape(
-        &self,
-        font: *mut ffi::hb_font_t,
-        buffer: *mut ffi::hb_buffer_t,
-    ) -> Result<bool, String> {
-        let mut text_buffer: *mut ffi::hb_buffer_t = std::ptr::null_mut();
-        if self.shape.verify {
-            text_buffer = ffi::hb_buffer_create();
-            ffi::hb_buffer_append(text_buffer, buffer, 0, u32::MAX);
-        }
-
-        let features: Vec<_> = self
-            .features
-            .features
-            .iter()
-            .map(|feat| unsafe {
-                let mut feature = MaybeUninit::uninit();
-                ffi::hb_feature_from_string(
-                    feat.as_ptr() as _,
-                    feat.len() as _,
-                    feature.as_mut_ptr(),
-                );
-                feature.assume_init()
-            })
-            .collect();
-
-        let shapers: Vec<*const std::os::raw::c_char> =
-            self.shape.shapers.iter().map(|s| s.as_ptr()).collect();
-        if ffi::hb_shape_full(
-            font,
-            buffer,
-            features.as_ptr(),
-            features.len() as _,
-            shapers.as_ptr(),
-        ) == 0
-        {
-            if !text_buffer.is_null() {
-                ffi::hb_buffer_destroy(text_buffer);
-            }
-            return Err("all shapers failed.".to_string());
-        }
-        Ok(true)
     }
 }

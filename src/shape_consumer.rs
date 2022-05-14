@@ -1,13 +1,12 @@
 use harfbuzz_sys as ffi;
 
-use super::application::Application;
-use super::options::{FontOptions, Options, ShapeOptions};
 use crate::consumer::Consumer;
+use crate::options::{FontOpts, ShapeOpts, TextOpts};
 use crate::output::Output;
 
-struct ShapeConsumer<Output> {
+pub struct ShapeConsumer<Out> {
     buffer: *mut ffi::hb_buffer_t,
-    output: Output,
+    out: Out,
 }
 
 impl<T> Drop for ShapeConsumer<T> {
@@ -18,34 +17,34 @@ impl<T> Drop for ShapeConsumer<T> {
     }
 }
 
-impl<Output: Consumer> ShapeConsumer<Output> {
-    type Opts = ShapeOptions;
+impl<Out: Output> Consumer for ShapeConsumer<Out>
+where
+    Out::Opts: FontOpts + ShapeOpts + TextOpts,
+{
+    type Opts = Out::Opts;
 
-    fn with_options(opts: &ShapeOptions) -> ShapeConsumer<Output> {
+    fn with_options(opts: &<Out as Output>::Opts) -> ShapeConsumer<Out> {
         let buffer = unsafe { ffi::hb_buffer_create() };
-        let output = Output::new(buffer, opts);
-        Self { buffer, output }
+        let out = Out::create(buffer, opts);
+        Self { buffer, out }
     }
 
-    unsafe fn consume_line<Opts>(&mut self, opts: &Opts) -> anyhow::Result<bool> {
-        let text = opts.readline();
+    unsafe fn consume_line(&mut self, opts: &Out::Opts) -> anyhow::Result<bool> {
+        let text = opts
+            .readline()
+            .ok_or_else(|| anyhow::anyhow!("no more line"))?;
 
-        self.output.new_line();
+        self.out.new_line();
 
-        for n in 0..self.opts.shape.num_iterations {
-            self.opts.shape.populate_buffer(
-                self.buffer,
-                &text,
-                &opts.text.text_before,
-                &opts.text.text_after,
-            );
+        for n in 0..opts.num_iterations() {
+            opts.populate_buffer(self.buffer, &text, opts.text_before(), opts.text_after());
 
             if n == 1 {
-                self.output
-                    .consume_text(self.buffer, &text, opts.shape.utf8_clusters);
+                self.out
+                    .consume_text(self.buffer, &text, opts.utf8_clusters());
             }
 
-            if let Err(err) = self.opts.shape(self.opts.font_opts.font(), self.buffer) {
+            if let Err(err) = opts.shape(opts.font().as_ptr(), self.buffer) {
                 eprintln!("{}", err);
                 if ffi::hb_buffer_get_content_type(self.buffer)
                     == ffi::HB_BUFFER_CONTENT_TYPE_GLYPHS
@@ -55,13 +54,13 @@ impl<Output: Consumer> ShapeConsumer<Output> {
                 return Ok(true);
             }
         }
-        self.output
-            .consume_glyphs(self.buffer, &text, self.opts.shape.utf8_clusters);
+        self.out
+            .consume_glyphs(self.buffer, &text, opts.utf8_clusters());
         Ok(true)
     }
 
-    unsafe fn finish<Opt>(&mut self, opts: &Opt) {
-        self.output.finish(&mut self.buffer, opts);
+    unsafe fn finish(&mut self, opts: &Out::Opts) {
+        self.out.finish(self.buffer, opts);
         ffi::hb_buffer_destroy(self.buffer);
         self.buffer = std::ptr::null_mut();
     }
