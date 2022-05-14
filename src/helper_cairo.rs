@@ -643,12 +643,14 @@ fn use_hb_draw() -> bool {
 pub fn create_scaled_font(font_opts: &FontOptions) -> anyhow::Result<cairo::ScaledFont> {
     let font = unsafe { ffi::hb_font_reference(font_opts.font()) };
 
+    let font_size = font_opts.font_size.unwrap_or_default();
+
     let ctm = cairo::Matrix::identity();
     let mut font_matrix = cairo::Matrix::default();
-    font_matrix.scale(font_opts.font_size.x as _, font_opts.font_size.y as _);
+    font_matrix.scale(font_size.x as _, font_size.y as _);
 
     if use_hb_draw() {
-        font_matrix.set_xy((-font_opts.slant * font_opts.font_size.x) as f64);
+        font_matrix.set_xy((-font_opts.slant * font_size.x) as f64);
     }
     let mut font_options = cairo::FontOptions::new()?;
     font_options.set_hint_style(cairo::HintStyle::None);

@@ -55,16 +55,10 @@ impl ViewCairo {
         let vert = if is_vertical { 1. } else { 0. };
         let horiz = if is_vertical { 0. } else { 1. };
 
-        let x_sign = if opts.font_opts.font_size.x < 0. {
-            -1.
-        } else {
-            1.
-        };
-        let y_sign = if opts.font_opts.font_size.y < 0. {
-            -1.
-        } else {
-            1.
-        };
+        let font_size = opts.font_opts.font_size.unwrap_or_default();
+
+        let x_sign = if font_size.x < 0. { -1. } else { 1. };
+        let y_sign = if font_size.y < 0. { -1. } else { 1. };
 
         let font = opts.font_opts.font();
 
@@ -114,9 +108,11 @@ impl ViewCairo {
             cairo::Content::Alpha
         };
 
+        let margin = opts.view.margin.unwrap_or_default();
+
         let cr = create_cairo_context(
-            w + opts.view.margin.l + opts.view.margin.r,
-            h + opts.view.margin.t + opts.view.margin.b,
+            w + margin.l + margin.r,
+            h + margin.t + margin.b,
             &opts.view,
             &opts.output,
             content,
@@ -124,7 +120,7 @@ impl ViewCairo {
 
         cr.set_scaled_font(&scaled_font);
 
-        cr.translate(opts.view.margin.l, opts.view.margin.t);
+        cr.translate(margin.l, margin.t);
 
         if is_vertical {
             cr.translate(w - ascent, y_sign.clamp(0., h));

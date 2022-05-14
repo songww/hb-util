@@ -1,8 +1,8 @@
+use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::{cell::RefCell, os::unix::prelude::OsStringExt};
 
 use clap::{ArgEnum, Args, Parser};
 use harfbuzz_sys as ffi;
@@ -102,13 +102,22 @@ pub struct Options<const B: usize = 0> {
     pub view: ViewOptions,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct FontSize {
     pub x: f32,
     pub y: f32,
 }
 
-#[derive(Debug)]
+impl Default for FontSize {
+    fn default() -> Self {
+        Self {
+            x: unsafe { DEFAULT_FONT_SIZE } as f32,
+            y: unsafe { DEFAULT_FONT_SIZE } as f32,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct FontPpem {
     pub x: u32,
     pub y: u32,
@@ -120,8 +129,11 @@ impl Default for FontPpem {
     }
 }
 
-extern "Rust" {
+extern "C" {
+    #[no_mangle]
     static SUBPIXEL_BITS: i32;
+    #[no_mangle]
+    static DEFAULT_FONT_SIZE: usize;
 }
 
 type FnSetFontFuncs = unsafe extern "C" fn(*mut ffi::hb_font_t);
@@ -154,11 +166,11 @@ pub struct FontOptions {
 
     /// Font size, 1/2 integers or 'upem' (default: 256)
     #[clap(long, parse(try_from_str = parse_font_size))]
-    pub font_size: FontSize,
+    pub font_size: Option<FontSize>,
 
     /// Set x,y pixels per EM, 1/2 integers (default: 0; disabled)
     #[clap(long, parse(try_from_str = parse_font_ppem))]
-    pub ppem: FontPpem,
+    pub ppem: Option<FontPpem>,
 
     /// Set font point-size (default: 0; disabled)
     #[clap(long, default_value_t = 0.)]
@@ -195,9 +207,6 @@ pub struct FontOptions {
 
     #[clap(skip)]
     font: RefCell<Option<FontCache>>,
-
-    #[clap(skip)]
-    subpixel_bits: Option<i32>,
 }
 
 #[derive(Clone, Debug)]
@@ -229,9 +238,10 @@ impl Drop for FontCache {
 
 impl FontOptions {
     pub fn font(&self) -> *mut ffi::hb_font_t {
-        if let Some(ref cache) = *self.font.borrow() {
-            return cache.font;
-        }
+        self.font.borrow().as_ref().unwrap().font
+    }
+
+    fn load_font(&mut self) {
         assert!(
             PathBuf::from(&self.font_file).exists(),
             "{}: Failed reading file",
@@ -243,23 +253,30 @@ impl FontOptions {
             let face = ffi::hb_face_create(blob, self.face_index as _);
             let font = ffi::hb_font_create(face);
 
-            let font_size_x = if self.font_size.x == FONT_SIZE_UPEM as f32 {
+            let font_size = self.font_size.unwrap_or_default();
+            let font_size_x = if font_size.x == FONT_SIZE_UPEM as f32 {
                 ffi::hb_face_get_upem(face) as f32
             } else {
-                self.font_size.x
+                font_size.x
             };
-            let font_size_y = if self.font_size.y == FONT_SIZE_UPEM as f32 {
+            let font_size_y = if font_size.y == FONT_SIZE_UPEM as f32 {
                 ffi::hb_face_get_upem(face) as f32
             } else {
-                self.font_size.y
+                font_size.y
             };
 
-            ffi::hb_font_set_ppem(font, self.ppem.x, self.ppem.y);
+            let _ = self.font_size.replace(FontSize {
+                x: font_size_x,
+                y: font_size_y,
+            });
+
+            let ppem = self.ppem.unwrap_or_default();
+            ffi::hb_font_set_ppem(font, ppem.x, ppem.y);
             ffi::hb_font_set_ptem(font, self.ptem);
 
             ffi::hb_font_set_synthetic_slant(font, self.slant);
 
-            let subpixel_bits = self.subpixel_bits.unwrap_or(SUBPIXEL_BITS);
+            let subpixel_bits = SUBPIXEL_BITS;
             let scale_x: f32 = libm::scalbnf(font_size_x, subpixel_bits);
             let scale_y: f32 = libm::scalbnf(font_size_y, subpixel_bits);
             ffi::hb_font_set_scale(font, scale_x as i32, scale_y as i32);
@@ -306,8 +323,6 @@ impl FontOptions {
         };
 
         self.font.replace(Some(cache));
-
-        self.font.borrow().as_ref().unwrap().font
     }
 }
 
@@ -321,7 +336,7 @@ pub fn parse_font_size(arg: &str) -> anyhow::Result<FontSize> {
     let arg: Vec<_> = arg
         .split(|c| c == ' ' || c == ',')
         .map(|v| v.trim_matches(|c| c == ' ' || c == ','))
-        .filter(|v| v.is_empty())
+        .filter(|v| !v.is_empty())
         .collect();
     if arg.len() == 1 {
         let size: f32 = arg[0].parse()?;
@@ -342,7 +357,7 @@ pub fn parse_font_ppem(arg: &str) -> anyhow::Result<FontPpem> {
     let arg: Vec<_> = arg
         .split(|c| c == ' ' || c == ',')
         .map(|v| v.trim_matches(|c| c == ' ' || c == ','))
-        .filter(|v| v.is_empty())
+        .filter(|v| !v.is_empty())
         .collect();
     if arg.len() == 1 {
         let size: u32 = arg[0].parse()?;
@@ -361,11 +376,16 @@ pub fn parse_font_ppem(arg: &str) -> anyhow::Result<FontPpem> {
 
 pub trait FontOpts {
     fn font(&self) -> HbFont;
+    fn load_font(&mut self);
 }
 
 impl FontOpts for Options {
     fn font(&self) -> HbFont {
         unsafe { HbFont::from_raw(ffi::hb_font_reference(self.font_opts.font())) }
+    }
+
+    fn load_font(&mut self) {
+        self.font_opts.load_font();
     }
 }
 
@@ -403,7 +423,8 @@ impl TextOptions {
         let text = TEXT
             .get_or_try_init(|| {
                 if let Some(ref path) = self.text_file {
-                    Ok(std::fs::read_to_string(path)?)
+                    Ok(std::fs::read_to_string(path)
+                        .map_err(|err| anyhow::anyhow!("Can not open '{}'", path.display()))?)
                 } else if !self.unicodes.is_empty() {
                     let s = self
                         .unicodes
@@ -715,7 +736,7 @@ pub struct FontExtents {
     pub line_gap: f64,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ViewMargin {
     pub t: f64,
     pub r: f64,
@@ -736,7 +757,7 @@ impl Default for ViewMargin {
 
 impl std::fmt::Display for ViewMargin {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        fmt.write_str(&format!("{}, {}, {}, {}", self.t, self.r, self.b, self.l))
+        fmt.write_str(&format!("{},{},{},{}", self.t, self.r, self.b, self.l))
     }
 }
 
@@ -763,15 +784,15 @@ pub struct ViewOptions {
     pub font_extents: Option<FontExtents>,
 
     /// Margin around output (default: 16)
-    #[clap(long, parse(try_from_str = parse_margin), default_value_t = ViewMargin::default())]
-    pub margin: ViewMargin,
+    #[clap(long, parse(try_from_str = parse_margin))]
+    pub margin: Option<ViewMargin>,
 }
 
 fn parse_font_extents(arg: &str) -> anyhow::Result<FontExtents> {
     let arg: Vec<_> = arg
         .split(|c| c == ' ' || c == ',')
         .map(|v| v.trim_matches(|c| c == ' ' || c == ','))
-        .filter(|v| v.is_empty())
+        .filter(|v| !v.is_empty())
         .collect();
     let mut extents = FontExtents {
         ascent: 0.,
@@ -798,7 +819,7 @@ fn parse_margin(arg: &str) -> anyhow::Result<ViewMargin> {
     let arg: Vec<_> = arg
         .split(|c| c == ' ' || c == ',')
         .map(|v| v.trim_matches(|c| c == ' ' || c == ','))
-        .filter(|v| v.is_empty())
+        .filter(|v| !v.is_empty())
         .collect();
     let mut m = ViewMargin::default();
     match arg.len() {

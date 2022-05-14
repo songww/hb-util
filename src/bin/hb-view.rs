@@ -6,8 +6,10 @@ use lib::font_text::FontText;
 use lib::shape_consumer::ShapeConsumer;
 use lib::view_cairo::ViewCairo;
 
-const DEFAULT_FONT_SIZE: usize = 256;
-const SUBPIXEL_BITS: usize = 6;
+#[no_mangle]
+pub static DEFAULT_FONT_SIZE: usize = 256;
+#[no_mangle]
+pub static SUBPIXEL_BITS: usize = 6;
 
 fn main() {
     let mut driver = FontText::<ShapeConsumer<ViewCairo>>::new();
