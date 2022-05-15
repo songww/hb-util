@@ -45,7 +45,7 @@ impl Output for ViewCairo {
         self.lines.push(l);
     }
     unsafe fn finish(&mut self, _buffer: *mut ffi::hb_buffer_t, opts: &Options) {
-        self.render(opts);
+        self.render(opts).unwrap();
     }
 }
 
@@ -142,11 +142,12 @@ impl ViewCairo {
             if false && cr.target().type_() == cairo::SurfaceType::Image {
                 // cairo_show_glyphs dosen't supported subpixel positioning
                 cr.glyph_path(&l.glyphs);
-                cr.fill();
+                cr.fill().unwrap();
             } else if !l.text_clusters.is_empty() {
-                cr.show_text_glyphs(&l.utf8, &l.glyphs, &l.text_clusters, l.cluster_flags);
+                cr.show_text_glyphs(&l.utf8, &l.glyphs, &l.text_clusters, l.cluster_flags)
+                    .unwrap();
             } else {
-                cr.show_glyphs(&l.glyphs);
+                cr.show_glyphs(&l.glyphs).unwrap();
             }
         }
         Ok(())
