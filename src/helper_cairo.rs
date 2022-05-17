@@ -5,11 +5,13 @@ use harfbuzz_sys as ffi;
 use crate::options::{FontOptions, OutputAndFormatOptions, OutputFormat, ViewOptions};
 
 pub struct HbFont(*mut ffi::hb_font_t);
+
 impl Drop for HbFont {
     fn drop(&mut self) {
         unsafe { ffi::hb_font_destroy(self.0) }
     }
 }
+
 impl HbFont {
     pub fn as_ptr(&self) -> *mut ffi::hb_font_t {
         self.0
@@ -209,7 +211,7 @@ unsafe extern "C" fn cairo_draw_funcs() -> *mut ffi::hb_draw_funcs_t {
     DFUNCS.0
 }
 
-fn render_glyph(
+pub fn render_glyph(
     scaled_font: &cairo::ScaledFont,
     glyph: std::os::raw::c_ulong,
     cr: &cairo::Context,
@@ -590,7 +592,7 @@ fn render_color_glyph_layers(
 //     let extents = &mut *(extents as cairo::TextExtents);
 //     render_glyph(scaled_font, glyph, cr, extents)
 // }
-fn render_color_glyph(
+pub fn render_color_glyph(
     scaled_font: &cairo::ScaledFont,
     glyph: std::os::raw::c_ulong,
     cr: &cairo::Context,
@@ -664,12 +666,14 @@ pub fn create_scaled_font(font_opts: &FontOptions) -> anyhow::Result<cairo::Scal
         cairo::ScaledFont::new(&face, &font_matrix, &ctm, &font_options)?
     };
 
-    scaled_font.set_user_data(&HB_CAIRO_FONT_KEY, Rc::new(HbFont(font)));
+    scaled_font
+        .set_user_data(&HB_CAIRO_FONT_KEY, Rc::new(HbFont(font)))
+        .unwrap();
 
     Ok(scaled_font)
 }
 
-static HB_CAIRO_FONT_KEY: cairo::UserDataKey<HbFont> = cairo::UserDataKey::new();
+pub static HB_CAIRO_FONT_KEY: cairo::UserDataKey<HbFont> = cairo::UserDataKey::new();
 
 pub trait ScaledFontExt {
     fn has_data(&self) -> bool;

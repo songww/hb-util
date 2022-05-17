@@ -1,11 +1,71 @@
-use std::mem::MaybeUninit;
+use std::{mem::MaybeUninit, rc::Rc};
 
 use harfbuzz_sys as ffi;
+use unicode_segmentation::UnicodeSegmentation;
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+struct GlyphInfo(ffi::hb_glyph_info_t);
+impl GlyphInfo {
+    fn codepoint(&self) -> u32 {
+        self.0.codepoint
+    }
+    fn cluster(&self) -> u32 {
+        self.0.cluster
+    }
+    fn mask(&self) -> u32 {
+        self.0.mask
+    }
+}
+
+impl std::fmt::Debug for GlyphInfo {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.debug_struct("GlyphInfo")
+            .field("codepoint", &self.0.codepoint)
+            .field("cluster", &self.0.cluster)
+            .field("mask", &self.0.mask)
+            // .field("var1", &self.0.var1)
+            // .field("var2", &self.0.var2)
+            .finish()
+    }
+}
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+struct GlyphPosition(ffi::hb_glyph_position_t);
+impl GlyphPosition {
+    fn x_advance(&self) -> i32 {
+        self.0.x_advance
+    }
+    fn y_advance(&self) -> i32 {
+        self.0.y_advance
+    }
+    fn x_offset(&self) -> i32 {
+        self.0.x_offset
+    }
+    fn y_offset(&self) -> i32 {
+        self.0.y_offset
+    }
+}
+
+impl std::fmt::Debug for GlyphPosition {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fmt.debug_struct("GlyphPosition")
+            .field("x_advance", &self.0.x_advance)
+            .field("y_advance", &self.0.y_advance)
+            .field("x_offset", &self.0.x_offset)
+            .field("y_offset", &self.0.y_offset)
+            .finish()
+    }
+}
 
 fn main() -> anyhow::Result<()> {
-    let text = std::fs::read_to_string("emoji.txt").unwrap();
+    let text = std::fs::read_to_string("src/bin/emoji.rs").unwrap();
 
-    let font_data = std::fs::read("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf").unwrap();
+    let scale_bits = 6;
+
+    let font_data =
+        std::fs::read("/home/songww/.local/share/fonts/LXGWWenKai-Regular.ttf").unwrap();
 
     let blob = unsafe {
         ffi::hb_blob_create_or_fail(
@@ -30,64 +90,116 @@ fn main() -> anyhow::Result<()> {
         "Couldn't create hb font."
     );
 
+    let x_scale = libm::scalbnf(128., scale_bits);
+    let y_scale = libm::scalbnf(128., scale_bits);
+
+    dbg!(x_scale, y_scale);
+
     unsafe {
-        ffi::hb_font_set_ppem(font, 128, 128);
+        ffi::hb_font_set_ppem(font, 0, 0);
+        ffi::hb_font_set_ptem(font, 0.);
+        ffi::hb_font_set_scale(font, x_scale as i32, y_scale as i32);
         ffi::hb_ot_font_set_funcs(font);
     }
 
     let buf = unsafe { ffi::hb_buffer_create() };
 
-    let mut target = cairo::ImageSurface::create(cairo::Format::ARgb32, 600, 800).unwrap();
+    let target = cairo::ImageSurface::create(cairo::Format::ARgb32, 600, 800).unwrap();
     let cr = cairo::Context::new(&target).unwrap();
 
+    cr.set_scaled_font(&create_scaled_font(font));
+    // cr.set_font_face(
+    //     &cairo::FontFace::toy_create(
+    //         "Noto Color Emoji",
+    //         cairo::FontSlant::Normal,
+    //         cairo::FontWeight::Normal,
+    //     )
+    //     .unwrap(),
+    // );
+
+    let direction = ffi::HB_DIRECTION_LTR;
+    let is_backward = hb_util::hb_direction_is_backward(direction);
+
+    let mut hb_extents = MaybeUninit::uninit();
+    unsafe { ffi::hb_font_get_extents_for_direction(font, direction, hb_extents.as_mut_ptr()) };
+
+    let extents: ffi::hb_font_extents_t = unsafe { hb_extents.assume_init() };
+
+    let is_vertical = hb_util::hb_direction_is_vertical(direction);
+    dbg!(is_vertical);
+    dbg!(extents);
+
+    let ascent = libm::scalbn(extents.ascender as f64, scale_bits);
+    let descent = libm::scalbn(extents.descender as f64, scale_bits);
+    let line_gap = libm::scalbn(extents.line_gap as f64, scale_bits);
+    let leading = ascent + descent + line_gap;
+
+    cr.translate(0., ascent);
+    cr.translate(0., -leading);
+
+    // println!("{}", &text);
+
     for line in text.lines() {
+        cr.translate(0., leading);
+        dbg!(line);
+        let graphemes: Vec<_> = line.grapheme_indices(true).collect();
+        dbg!(&graphemes);
         let s = std::ffi::CString::new(line).unwrap();
         unsafe {
-            println!("add {}", line);
+            println!("add {:?}", s);
             ffi::hb_buffer_reset(buf);
             ffi::hb_buffer_add_utf8(buf, s.as_ptr(), -1, 0, -1);
-            ffi::hb_buffer_set_direction(buf, ffi::HB_DIRECTION_LTR);
+            ffi::hb_buffer_set_direction(buf, direction);
             ffi::hb_buffer_guess_segment_properties(buf);
             ffi::hb_shape(font, buf, std::ptr::null(), 0);
 
             let num_glyphs = ffi::hb_buffer_get_length(buf);
 
-            let mut glyph_count: u32 = num_glyphs;
-            let glyph_info = ffi::hb_buffer_get_glyph_infos(buf, &mut glyph_count as *mut _);
-            let glyph_pos = ffi::hb_buffer_get_glyph_positions(buf, &mut glyph_count as *mut _);
+            let glyph_count: u32 = num_glyphs;
+            let glyph_info = ffi::hb_buffer_get_glyph_infos(buf, std::ptr::null_mut());
+            let glyph_pos = ffi::hb_buffer_get_glyph_positions(buf, std::ptr::null_mut());
 
-            let mut cursor_x: ffi::hb_position_t = 0;
-            let mut cursor_y: ffi::hb_position_t = 0;
+            let mut glyphs: Vec<MaybeUninit<ffi::hb_glyph_info_t>> =
+                vec![MaybeUninit::uninit(); glyph_count as usize];
+            std::ptr::copy_nonoverlapping(
+                glyph_info,
+                glyphs.as_mut_ptr() as *mut _,
+                glyph_count as usize,
+            );
+            let glyph_infos: Vec<GlyphInfo> = std::mem::transmute(glyphs);
+            // dbg!(&glyphs);
+
+            let mut positions: Vec<MaybeUninit<ffi::hb_glyph_position_t>> =
+                vec![MaybeUninit::uninit(); glyph_count as usize];
+            std::ptr::copy(
+                glyph_pos,
+                positions.as_mut_ptr() as *mut _,
+                glyph_count as usize,
+            );
+            let glyph_positions: Vec<ffi::hb_glyph_position_t> = std::mem::transmute(positions);
+            // dbg!(&glyph_positions);
+
+            // let mut cursor_x: ffi::hb_position_t = 0;
+            // let mut cursor_y: ffi::hb_position_t = 0;
 
             assert_eq!(glyph_count, num_glyphs);
 
-            let default_glyph = cairo::ffi::cairo_glyph_t {
-                index: 0,
-                x: 0.,
-                y: 0.,
-            };
-            let default_glyph: cairo::Glyph = std::mem::transmute(default_glyph);
-
+            let default_glyph = cairo::Glyph::new(0, 0., 0.);
             let mut glyphs: Vec<cairo::Glyph> = vec![default_glyph; glyph_count as usize + 1];
 
             let mut cluster_count = 0;
             if glyph_count > 0 {
                 cluster_count = 1;
             }
-            for i in 1..glyph_count as isize {
-                let pos = glyph_info.offset(i);
-                let ppos = glyph_info.offset(i - 1);
-                if (*pos).cluster != (*ppos).cluster {
+            for i in 1..glyph_count as usize {
+                let pos = glyph_infos.get_unchecked(i);
+                let ppos = glyph_infos.get_unchecked(i - 1);
+                if pos.cluster() != ppos.cluster() {
                     cluster_count += 1;
                 }
             }
 
-            let default_cluster = cairo::ffi::cairo_text_cluster_t {
-                num_bytes: 0,
-                num_glyphs: 0,
-            };
-            let default_cluster: cairo::TextCluster = std::mem::transmute(default_cluster);
-
+            let default_cluster = cairo::TextCluster::new(0, 0);
             let mut clusters: Vec<cairo::TextCluster> =
                 vec![default_cluster; cluster_count as usize];
 
@@ -95,85 +207,73 @@ fn main() -> anyhow::Result<()> {
             let mut y: ffi::hb_position_t = 0;
 
             for i in 0..glyph_count as usize {
-                let pos = glyph_pos.offset(i as isize);
-                let glyph = &mut glyphs[i] as *mut _ as *mut cairo::ffi::cairo_glyph_t;
-                (*glyph).index = (*glyph_info.offset(i as isize)).codepoint as _;
-                (*glyph).x = ((*pos).x_offset + x) as f64;
-                (*glyph).y = ((*pos).y_offset + y) as f64;
+                let pos = glyph_positions.get_unchecked(i);
+                let glyph = &mut glyphs[i];
+                glyph.set_index(glyph_infos.get_unchecked(i).codepoint() as _);
+                glyph.set_x(libm::scalbn((pos.x_offset + x) as f64, scale_bits));
+                glyph.set_y(libm::scalbn((-pos.y_offset + y) as f64, scale_bits));
 
-                x += (*pos).x_advance;
-                y += (*pos).y_advance;
+                x += pos.x_advance;
+                y += -pos.y_advance;
             }
 
-            let glyph =
-                &mut glyphs[glyph_count as usize] as *mut _ as *mut cairo::ffi::cairo_glyph_t;
-            (*glyph).index = u64::MAX;
-            (*glyph).x = x as _;
-            (*glyph).y = y as _;
+            let glyph = &mut glyphs[glyph_count as usize];
+            glyph.set_index(u64::MAX);
+            glyph.set_x(x as _);
+            glyph.set_y(y as _);
 
-            let cluster_flags = cairo::TextClusterFlags::None;
+            let cluster_flags = if is_backward {
+                cairo::TextClusterFlags::Backward
+            } else {
+                cairo::TextClusterFlags::None
+            };
+
+            dbg!(is_backward);
+
+            dbg!(cluster_count);
+            dbg!(glyph_count);
 
             if cluster_count > 0 {
                 // TODO: backward check
                 let mut cluster = 0;
 
-                let chars: Vec<_> = line.chars().enumerate().collect();
+                let text_cluster = &mut clusters[cluster];
+                text_cluster.set_num_glyphs(text_cluster.num_bytes() + 1);
 
-                let text_cluster =
-                    &mut clusters[cluster] as *mut _ as *mut cairo::ffi::cairo_text_cluster_t;
-                (*text_cluster).num_glyphs += 1;
+                let mut iter = graphemes.iter();
 
-                let mut iter = chars.iter();
+                let mut total_bytes = 0;
 
-                let mut start = &chars[0];
-                let mut end = &chars[0];
-
-                let mut num_bytes = 0;
-
-                for i in 1..num_glyphs as isize {
-                    let hb_glyph = glyph_info.offset(i);
-                    let hb_glyph_l = glyph_info.offset(i - 1);
-                    if (*hb_glyph).cluster != (*hb_glyph_l).cluster {
-                        assert!((*hb_glyph).cluster > (*hb_glyph_l).cluster);
-                        for _ in (*hb_glyph).cluster..(*hb_glyph_l).cluster {
-                            let v = iter.next().unwrap();
-                            num_bytes += v.1.len_utf8();
-                        }
-                        end = iter.next().unwrap();
-                        num_bytes += end.1.len_utf8();
-                        let text_cluster = &mut clusters[cluster] as *mut _
-                            as *mut cairo::ffi::cairo_text_cluster_t;
-                        (*text_cluster).num_bytes = num_bytes as i32;
-                        num_bytes = 0;
+                for i in 1..num_glyphs as usize {
+                    let hb_glyph = glyph_infos.get_unchecked(i);
+                    let hb_glyph_l = glyph_infos.get_unchecked(i - 1);
+                    if hb_glyph.cluster() != hb_glyph_l.cluster() {
+                        assert!(hb_glyph.cluster() > hb_glyph_l.cluster());
+                        let num_bytes = hb_glyph.cluster() - hb_glyph_l.cluster();
+                        let v = iter.next().unwrap();
+                        assert!(v.0 == hb_glyph_l.cluster() as usize);
+                        let text_cluster = clusters.get_unchecked_mut(cluster);
+                        text_cluster.set_num_bytes(num_bytes as i32);
+                        total_bytes += num_bytes;
                         cluster += 1;
-                        start = end;
                     }
-                    let text_cluster =
-                        &mut clusters[cluster] as *mut _ as *mut cairo::ffi::cairo_text_cluster_t;
-                    (*text_cluster).num_glyphs += 1;
+                    let text_cluster = clusters.get_unchecked_mut(cluster);
+                    text_cluster.set_num_glyphs(text_cluster.num_bytes() + 1);
                 }
-                let text_cluster =
-                    &mut clusters[cluster] as *mut _ as *mut cairo::ffi::cairo_text_cluster_t;
-                (*text_cluster).num_bytes = iter.map(|v| v.1.len_utf8()).sum::<usize>() as i32;
+                let text_cluster = clusters.get_unchecked_mut(cluster);
+                text_cluster.set_num_glyphs(line.len() as i32 - total_bytes as i32);
             }
-            // for i in 0..glyph_count {
-            //     let glyphid: ffi::hb_codepoint_t = (*glyph_info.offset(i as isize)).codepoint;
-            //     let x_offset: ffi::hb_position_t = (*pos).x_offset;
-            //     let y_offset = (*pos).y_offset;
-            //     let x_advance = (*pos).x_advance;
-            //     let y_advance = (*pos).y_advance;
-            //     /* draw_glyph(glyphid, cursor_x + x_offset, cursor_y + y_offset); */
-            //     cursor_x += x_advance;
-            //     cursor_y += y_advance;
-            // }
-            let glyphs: Vec<cairo::Glyph> = std::mem::transmute(glyphs);
-            let clusters: Vec<cairo::TextCluster> = std::mem::transmute(clusters);
+
+            dbg!(&clusters);
             dbg!(&glyphs);
-            for cluster in clusters.iter() {
-                dbg!(cluster.num_bytes(), cluster.num_glyphs());
-            }
-            cr.show_text_glyphs(&line, &glyphs, &clusters, cluster_flags)
-                .unwrap();
+            dbg!(cluster_count, &clusters.len(), &glyphs.len());
+            cr.show_text_glyphs(
+                &line,
+                &glyphs[..num_glyphs as usize],
+                &clusters,
+                cluster_flags,
+            )
+            .unwrap();
         }
     }
     unsafe {
@@ -183,10 +283,54 @@ fn main() -> anyhow::Result<()> {
         ffi::hb_blob_destroy(blob);
     }
 
-    let img = image::RgbaImage::from_vec(600, 800, target.data().unwrap().to_vec()).unwrap();
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open("/tmp/emoji.png")
+        .unwrap();
+    target.write_to_png(&mut f).unwrap();
     let cfgs = viuer::Config::default();
-    viuer::print(&img.into(), &cfgs).unwrap();
+    viuer::print_from_file("/tmp/emoji.png", &cfgs).unwrap();
     Ok(())
+}
+
+fn create_scaled_font(font: *mut ffi::hb_font_t) -> cairo::ScaledFont {
+    let font = unsafe { ffi::hb_font_reference(font) };
+
+    let font_face = create_user_font_face(font).unwrap();
+
+    let ctm = cairo::Matrix::identity();
+    let mut font_matrix = cairo::Matrix::default();
+    font_matrix.scale(128., 128.);
+
+    let mut options = cairo::FontOptions::new().unwrap();
+    options.set_hint_style(cairo::HintStyle::None);
+    options.set_hint_metrics(cairo::HintMetrics::Off);
+
+    let scaled_font = cairo::ScaledFont::new(&font_face, &font_matrix, &ctm, &options).unwrap();
+
+    // set user data
+
+    scaled_font
+}
+
+fn create_ft_font_face(font: *mut ffi::hb_font_t) -> cairo::FontFace {
+    todo!()
+}
+
+fn create_user_font_face(font: *mut ffi::hb_font_t) -> anyhow::Result<cairo::UserFontFace> {
+    let cairo_face = cairo::UserFontFace::create()?;
+    let rcfont = Rc::new(unsafe { hb_util::HbFont::from_raw(font) });
+    cairo_face.set_user_data(&hb_util::HB_CAIRO_FONT_KEY, rcfont)?;
+    cairo_face.set_render_glyph_func(hb_util::render_glyph);
+    unsafe {
+        let face = ffi::hb_font_get_face(font);
+        if ffi::hb_ot_color_has_png(face) == 1 || ffi::hb_ot_color_has_layers(face) == 1 {
+            cairo_face.set_render_color_glyph_func(hb_util::render_color_glyph);
+        }
+    }
+    Ok(cairo_face)
 }
 
 /*
