@@ -85,6 +85,7 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 [[package]]
 name = "cairo-rs"
 version = "0.16.0"
+source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
 dependencies = [
  "bitflags",
  "cairo-sys-rs",
@@ -97,6 +98,7 @@ dependencies = [
 [[package]]
 name = "cairo-sys-rs"
 version = "0.16.0"
+source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
 dependencies = [
  "glib-sys",
  "libc",
@@ -520,6 +522,7 @@ dependencies = [
 [[package]]
 name = "glib"
 version = "0.16.0"
+source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -539,6 +542,7 @@ dependencies = [
 [[package]]
 name = "glib-macros"
 version = "0.16.0"
+source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
 dependencies = [
  "anyhow",
  "heck",
@@ -552,6 +556,7 @@ dependencies = [
 [[package]]
 name = "glib-sys"
 version = "0.16.0"
+source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
 dependencies = [
  "libc",
  "system-deps",
@@ -560,6 +565,7 @@ dependencies = [
 [[package]]
 name = "gobject-sys"
 version = "0.16.0"
+source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
 dependencies = [
  "glib-sys",
  "libc",

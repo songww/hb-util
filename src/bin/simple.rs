@@ -60,7 +60,7 @@ impl std::fmt::Debug for GlyphPosition {
 }
 
 fn main() -> anyhow::Result<()> {
-    let text = std::fs::read_to_string("src/bin/emoji.rs").unwrap();
+    let text = std::fs::read_to_string("src/bin/hb-view.rs").unwrap();
 
     let scale_bits = 6;
 
