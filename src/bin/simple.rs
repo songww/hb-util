@@ -1,4 +1,4 @@
-use std::{mem::MaybeUninit, rc::Rc};
+use std::{mem::MaybeUninit, num, rc::Rc};
 
 use harfbuzz_sys as ffi;
 use unicode_segmentation::UnicodeSegmentation;
@@ -107,15 +107,22 @@ fn main() -> anyhow::Result<()> {
     let target = cairo::ImageSurface::create(cairo::Format::ARgb32, 600, 800).unwrap();
     let cr = cairo::Context::new(&target).unwrap();
 
-    cr.set_scaled_font(&create_scaled_font(font));
-    // cr.set_font_face(
-    //     &cairo::FontFace::toy_create(
-    //         "Noto Color Emoji",
-    //         cairo::FontSlant::Normal,
-    //         cairo::FontWeight::Normal,
-    //     )
-    //     .unwrap(),
+    // cr.set_scaled_font(&create_scaled_font(font));
+    cr.set_font_face(
+        &cairo::FontFace::toy_create(
+            "LXGW WenKai",
+            cairo::FontSlant::Normal,
+            cairo::FontWeight::Normal,
+        )
+        .unwrap(),
+    );
+
+    // cr.select_font_face(
+    //     "LXGW WenKai",
+    //     cairo::FontSlant::Normal,
+    //     cairo::FontWeight::Normal,
     // );
+    cr.set_font_size(18.);
 
     let direction = ffi::HB_DIRECTION_LTR;
     let is_backward = hb_util::hb_direction_is_backward(direction);
@@ -137,13 +144,14 @@ fn main() -> anyhow::Result<()> {
     cr.translate(0., ascent);
     cr.translate(0., -leading);
 
+    cr.set_source_rgb(0., 0., 0.);
     // println!("{}", &text);
 
     for line in text.lines() {
         cr.translate(0., leading);
         dbg!(line);
         let graphemes: Vec<_> = line.grapheme_indices(true).collect();
-        dbg!(&graphemes);
+        // dbg!(&graphemes);
         let s = std::ffi::CString::new(line).unwrap();
         unsafe {
             println!("add {:?}", s);
@@ -252,28 +260,37 @@ fn main() -> anyhow::Result<()> {
                         let num_bytes = hb_glyph.cluster() - hb_glyph_l.cluster();
                         let v = iter.next().unwrap();
                         assert!(v.0 == hb_glyph_l.cluster() as usize);
-                        let text_cluster = clusters.get_unchecked_mut(cluster);
-                        text_cluster.set_num_bytes(num_bytes as i32);
+                        // dbg!(1, cluster, num_bytes);
+                        clusters[cluster].set_num_bytes(num_bytes as i32);
                         total_bytes += num_bytes;
                         cluster += 1;
                     }
-                    let text_cluster = clusters.get_unchecked_mut(cluster);
-                    text_cluster.set_num_glyphs(text_cluster.num_bytes() + 1);
+                    let num_glyphs = clusters[cluster].num_glyphs() + 1;
+                    clusters[cluster].set_num_glyphs(num_glyphs);
+                    // dbg!(2, cluster, num_glyphs);
                 }
-                let text_cluster = clusters.get_unchecked_mut(cluster);
-                text_cluster.set_num_glyphs(line.len() as i32 - total_bytes as i32);
+                // dbg!(3, cluster);
+                clusters[cluster].set_num_bytes(line.len() as i32 - total_bytes as i32);
             }
 
-            dbg!(&clusters);
-            dbg!(&glyphs);
-            dbg!(cluster_count, &clusters.len(), &glyphs.len());
-            cr.show_text_glyphs(
-                &line,
-                &glyphs[..num_glyphs as usize],
-                &clusters,
-                cluster_flags,
-            )
-            .unwrap();
+            assert_eq!(glyph_count as usize + 1, glyphs.len());
+
+            // dbg!(&clusters);
+            // dbg!(&glyphs);
+            // dbg!(cluster_count, &clusters.len(), &glyphs.len());
+            // cr.set_source_rgb(0.4, 0.4, 0.4);
+            // cr.show_text_glyphs(
+            //     &line,
+            //     &glyphs[..glyph_count as usize],
+            //     &clusters,
+            //     cluster_flags,
+            // )
+            // .unwrap();
+            // cr.set_source_rgb(0.6, 0.6, 0.6);
+            // cr.show_glyphs(&glyphs[..glyph_count as usize]).unwrap();
+            // cr.set_source_rgb(0.2, 0.6, 0.8);
+            cr.show_text(&line).unwrap();
+            // break;
         }
     }
     unsafe {
@@ -285,8 +302,9 @@ fn main() -> anyhow::Result<()> {
 
     let mut f = std::fs::OpenOptions::new()
         .write(true)
-        .truncate(true)
         .create(true)
+        .append(false)
+        .truncate(true)
         .open("/tmp/emoji.png")
         .unwrap();
     target.write_to_png(&mut f).unwrap();
@@ -298,7 +316,7 @@ fn main() -> anyhow::Result<()> {
 fn create_scaled_font(font: *mut ffi::hb_font_t) -> cairo::ScaledFont {
     let font = unsafe { ffi::hb_font_reference(font) };
 
-    let font_face = create_user_font_face(font).unwrap();
+    let font_face = create_ft_font_face(font).unwrap();
 
     let ctm = cairo::Matrix::identity();
     let mut font_matrix = cairo::Matrix::default();
@@ -315,8 +333,13 @@ fn create_scaled_font(font: *mut ffi::hb_font_t) -> cairo::ScaledFont {
     scaled_font
 }
 
-fn create_ft_font_face(font: *mut ffi::hb_font_t) -> cairo::FontFace {
-    todo!()
+fn create_ft_font_face(font: *mut ffi::hb_font_t) -> anyhow::Result<cairo::FontFace> {
+    // Init the library
+    let lib = freetype::Library::init().unwrap();
+    // Load a font face
+    let face = lib.new_face("/home/songww/.local/share/fonts/LXGWWenKai-Regular.ttf", 0)?;
+
+    unsafe { cairo::FontFace::create_from_ft(&face) }.map_err(|err| anyhow::anyhow!(err))
 }
 
 fn create_user_font_face(font: *mut ffi::hb_font_t) -> anyhow::Result<cairo::UserFontFace> {
@@ -332,31 +355,3 @@ fn create_user_font_face(font: *mut ffi::hb_font_t) -> anyhow::Result<cairo::Use
     }
     Ok(cairo_face)
 }
-
-/*
-fn serialize_gr_command(m: u8, payload: &[u8]) -> Vec<u8>{
-    let cmd = format!("a=T,f=100,m={}", m);
-    let mut ans = Vec::new();
-    ans.extend(b"\033_G");
-    ans.extend(cmd.as_bytes());
-    if !payload.is_empty(){
-        ans.push(b';');
-        ans.extend(payload);
-    }
-    ans.extend(b"\033\\");
-    ans
-}
-
-
-fn write_chunked(data: &[u8]) {
-    let mut data = standard_b64encode(data);
-    while !data.is_empty() {
-        let (chunk, data) = data.split_at(4096);
-        let m = if data {1} else {0};
-        // sys.stdout.buffer.write(serialize_gr_command(payload=chunk, m=m, **cmd))
-        // sys.stdout.flush()
-    }
-}
-*/
-
-// write_chunked(a='T', f=100, data=f.read())

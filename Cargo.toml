@@ -9,20 +9,24 @@ edition = "2021"
 name = "hb-view"
 
 [dependencies]
+libc = "0.2"
 libm = "0.2"
+image = "0.24"
+viuer = "0.6"
 anyhow = "1"
 once_cell = "1"
+fontconfig = { version = "0.5", path = "../fontconfig-rs/fontconfig" }
+freetype-rs = "0.30"
 clap = { version = "3", features = ["derive", "unicode"] }
-viuer = "0.6.1"
-image = "0.24.2"
-unicode-segmentation = "1.9.0"
+unicode-segmentation = "1.9"
 
 [dependencies.cairo-rs]
-git = "https://github.com/songww/gtk-rs-core"
-branch = "cairo-glyph-setters"
-features = ["png"]
+git = "https://github.com/gtk-rs/gtk-rs-core"
+branch = "master"
+features = ["png", "freetype"]
 
 [dependencies.harfbuzz-sys]
 git = "https://github.com/songww/rust-harfbuzz"
 branch = "hb-latest"
+default-features = false
 features = ["build-native-harfbuzz"]

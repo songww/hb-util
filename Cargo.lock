@@ -85,10 +85,11 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 [[package]]
 name = "cairo-rs"
 version = "0.16.0"
-source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#47aba367d723b6763a8ba3097b18487e3c27f9bc"
 dependencies = [
  "bitflags",
  "cairo-sys-rs",
+ "freetype-rs",
  "glib",
  "libc",
  "once_cell",
@@ -98,7 +99,7 @@ dependencies = [
 [[package]]
 name = "cairo-sys-rs"
 version = "0.16.0"
-source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#47aba367d723b6763a8ba3097b18487e3c27f9bc"
 dependencies = [
  "glib-sys",
  "libc",
@@ -113,9 +114,9 @@ checksum = "2fff2a6927b3bb87f9595d67196a70493f627687a71d87a0d692242c33f58c11"
 
 [[package]]
 name = "cfg-expr"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e068cb2806bbc15b439846dc16c5f89f8599f2c3e4d73d4449d38f9b2f0b6c5"
+checksum = "0aacacf4d96c24b2ad6eb8ee6df040e4f27b0d0b39a5710c30091baa830485db"
 dependencies = [
  "smallvec",
 ]
@@ -193,6 +194,12 @@ dependencies = [
  "terminal_size",
  "winapi",
 ]
+
+[[package]]
+name = "const-cstr"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed3d0b5ff30645a68f35ece8cea4556ca14ef8a1651455f789a099a0513532a6"
 
 [[package]]
 name = "core-foundation"
@@ -336,6 +343,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dlib"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac1b7517328c04c2aa68422fc60a41b92208182142ed04a25879c26c8f878794"
+dependencies = [
+ "libloading",
+]
+
+[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,6 +414,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fontconfig"
+version = "0.5.0"
+dependencies = [
+ "yeslogic-fontconfig-sys",
+]
+
+[[package]]
 name = "foreign-types"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -418,15 +441,25 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bee38378a9e3db1cc693b4f88d166ae375338a0ff75cb8263e1c601d51f35dc6"
 dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "freetype-rs"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43094e336bade627b9e9349bb17fa3fab6d8bac69bb250fc6a6dc88d95ef79d1"
+dependencies = [
+ "bitflags",
  "freetype-sys",
  "libc",
 ]
 
 [[package]]
 name = "freetype-sys"
-version = "0.13.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a37d4011c0cc628dfa766fcc195454f4b068d7afdc2adfd28861191d866e731a"
+checksum = "ac95ab6040ffce2a8e86c01e050bedf3d2763a17ae1719a5d4231da3078b1028"
 dependencies = [
  "cmake",
  "libc",
@@ -522,7 +555,7 @@ dependencies = [
 [[package]]
 name = "glib"
 version = "0.16.0"
-source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#47aba367d723b6763a8ba3097b18487e3c27f9bc"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -542,7 +575,7 @@ dependencies = [
 [[package]]
 name = "glib-macros"
 version = "0.16.0"
-source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#47aba367d723b6763a8ba3097b18487e3c27f9bc"
 dependencies = [
  "anyhow",
  "heck",
@@ -556,7 +589,7 @@ dependencies = [
 [[package]]
 name = "glib-sys"
 version = "0.16.0"
-source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#47aba367d723b6763a8ba3097b18487e3c27f9bc"
 dependencies = [
  "libc",
  "system-deps",
@@ -565,7 +598,7 @@ dependencies = [
 [[package]]
 name = "gobject-sys"
 version = "0.16.0"
-source = "git+https://github.com/songww/gtk-rs-core?branch=cairo-glyph-setters#ce05bc808f812b736fc1675eb9e93e3e2c86a91a"
+source = "git+https://github.com/gtk-rs/gtk-rs-core?branch=master#47aba367d723b6763a8ba3097b18487e3c27f9bc"
 dependencies = [
  "glib-sys",
  "libc",
@@ -581,7 +614,7 @@ checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
 [[package]]
 name = "harfbuzz-sys"
 version = "0.5.0"
-source = "git+https://github.com/songww/rust-harfbuzz?branch=hb-latest#58f67d3ffe31ecfb10b8fed0e4f10992bd58ef77"
+source = "git+https://github.com/songww/rust-harfbuzz?branch=hb-latest#6904675ac03f665fe4d4f6ebf66a79fe0f30cb9d"
 dependencies = [
  "cc",
  "core-graphics",
@@ -604,8 +637,11 @@ dependencies = [
  "anyhow",
  "cairo-rs",
  "clap",
+ "fontconfig",
+ "freetype-rs",
  "harfbuzz-sys",
  "image",
+ "libc",
  "libm",
  "once_cell",
  "unicode-segmentation",
@@ -710,6 +746,16 @@ name = "libc"
 version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
+
+[[package]]
+name = "libloading"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efbc0f03f9a775e9f6aed295c6a1ba2253c5757a9e03d55c6caa46a681abcddd"
+dependencies = [
+ "cfg-if",
+ "winapi",
+]
 
 [[package]]
 name = "libm"
@@ -828,9 +874,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
+checksum = "7b10983b38c53aebdf33f542c6275b0f58a238129d00c4ae0e6fb59738d783ca"
 
 [[package]]
 name = "os_str_bytes"
@@ -1404,3 +1450,13 @@ name = "windows_x86_64_msvc"
 version = "0.36.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
+
+[[package]]
+name = "yeslogic-fontconfig-sys"
+version = "3.0.1"
+dependencies = [
+ "const-cstr",
+ "dlib",
+ "once_cell",
+ "pkg-config",
+]
