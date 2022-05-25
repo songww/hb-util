@@ -27,6 +27,4 @@ features = ["png", "freetype"]
 
 [dependencies.harfbuzz-sys]
 git = "https://github.com/songww/rust-harfbuzz"
-branch = "hb-latest"
-default-features = false
-features = ["build-native-harfbuzz"]
+branch = "migrate-to-meson"

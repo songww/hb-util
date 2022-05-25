@@ -436,15 +436,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
-name = "freetype"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bee38378a9e3db1cc693b4f88d166ae375338a0ff75cb8263e1c601d51f35dc6"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "freetype-rs"
 version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -614,13 +605,13 @@ checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
 [[package]]
 name = "harfbuzz-sys"
 version = "0.5.0"
-source = "git+https://github.com/songww/rust-harfbuzz?branch=hb-latest#6904675ac03f665fe4d4f6ebf66a79fe0f30cb9d"
+source = "git+https://github.com/songww/rust-harfbuzz?branch=migrate-to-meson#ce8e3cab1b2c0c6c7c2a537f014d11bb22c93013"
 dependencies = [
  "cc",
  "core-graphics",
  "core-text",
  "foreign-types",
- "freetype",
+ "freetype-sys",
  "pkg-config",
 ]
 
@@ -874,9 +865,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.11.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b10983b38c53aebdf33f542c6275b0f58a238129d00c4ae0e6fb59738d783ca"
+checksum = "7709cef83f0c1f58f666e746a08b21e0085f7440fa6a29cc194d68aac97a4225"
 
 [[package]]
 name = "os_str_bytes"

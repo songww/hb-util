@@ -64,65 +64,77 @@ fn main() -> anyhow::Result<()> {
 
     let scale_bits = 6;
 
-    let font_data =
-        std::fs::read("/home/songww/.local/share/fonts/LXGWWenKai-Regular.ttf").unwrap();
+    // Init the library
+    let lib = freetype::Library::init().unwrap();
+    // Load a font face
+    let mut ft_face = lib.new_face("/home/songww/.local/share/fonts/LXGWWenKai-Regular.ttf", 0)?;
 
-    let blob = unsafe {
-        ffi::hb_blob_create_or_fail(
-            font_data.as_ptr() as *const _,
-            font_data.len() as _,
-            ffi::HB_MEMORY_MODE_READONLY,
-            std::ptr::null_mut(),
-            None,
-        )
-    };
-    anyhow::ensure!(!blob.is_null(), "Couldn't create hb blob.");
+    let cairo_face =
+        cairo::FontFace::create_from_ft(&ft_face).map_err(|err| anyhow::anyhow!(err))?;
 
-    let face = unsafe { ffi::hb_face_create(blob, 0) };
-    anyhow::ensure!(
-        unsafe { ffi::hb_face_get_empty() } != face,
-        "Couldn't create hb face."
-    );
+    // let font_data =
+    //     std::fs::read("/home/songww/.local/share/fonts/LXGWWenKai-Regular.ttf").unwrap();
+    //
+    // let blob = unsafe {
+    //     ffi::hb_blob_create_or_fail(
+    //         font_data.as_ptr() as *const _,
+    //         font_data.len() as _,
+    //         ffi::HB_MEMORY_MODE_READONLY,
+    //         std::ptr::null_mut(),
+    //         None,
+    //     )
+    // };
+    // anyhow::ensure!(!blob.is_null(), "Couldn't create hb blob.");
+    //
+    // let face = unsafe { ffi::hb_face_create(blob, 0) };
+    // anyhow::ensure!(
+    //     unsafe { ffi::hb_face_get_empty() } != face,
+    //     "Couldn't create hb face."
+    // );
+    ft_face.set_char_size(0, 12, 0, 0).unwrap();
+    ft_face.reference()?;
+    let font = unsafe { ffi::hb_ft_font_create_referenced(ft_face.raw_mut() as *mut _) };
 
-    let font = unsafe { ffi::hb_font_create(face) };
+    // let font = unsafe { ffi::hb_font_create(face) };
     anyhow::ensure!(
         unsafe { ffi::hb_font_get_empty() } != font,
         "Couldn't create hb font."
     );
 
-    let x_scale = libm::scalbnf(128., scale_bits);
-    let y_scale = libm::scalbnf(128., scale_bits);
+    let x_scale = libm::scalbnf(12., scale_bits);
+    let y_scale = libm::scalbnf(12., scale_bits);
 
     dbg!(x_scale, y_scale);
 
-    unsafe {
-        ffi::hb_font_set_ppem(font, 0, 0);
-        ffi::hb_font_set_ptem(font, 0.);
-        ffi::hb_font_set_scale(font, x_scale as i32, y_scale as i32);
-        ffi::hb_ot_font_set_funcs(font);
-    }
+    // unsafe {
+    //     ffi::hb_font_set_ppem(font, 0, 0);
+    //     ffi::hb_font_set_ptem(font, 0.);
+    //     ffi::hb_font_set_scale(font, x_scale as i32, y_scale as i32);
+    //     ffi::hb_ot_font_set_funcs(font);
+    // }
 
     let buf = unsafe { ffi::hb_buffer_create() };
 
-    let target = cairo::ImageSurface::create(cairo::Format::ARgb32, 600, 800).unwrap();
+    let target = cairo::ImageSurface::create(cairo::Format::ARgb32, 300, 1000).unwrap();
     let cr = cairo::Context::new(&target).unwrap();
 
-    // cr.set_scaled_font(&create_scaled_font(font));
-    cr.set_font_face(
-        &cairo::FontFace::toy_create(
-            "LXGW WenKai",
-            cairo::FontSlant::Normal,
-            cairo::FontWeight::Normal,
-        )
-        .unwrap(),
-    );
+    cr.set_scaled_font(&create_scaled_font(&cairo_face));
+    // cr.set_scaled_font(&create_user_scaled_font(font));
+    // cr.set_font_face(
+    //     &cairo::FontFace::toy_create(
+    //         "LXGW WenKai",
+    //         cairo::FontSlant::Normal,
+    //         cairo::FontWeight::Normal,
+    //     )
+    //     .unwrap(),
+    // );
 
     // cr.select_font_face(
     //     "LXGW WenKai",
     //     cairo::FontSlant::Normal,
     //     cairo::FontWeight::Normal,
     // );
-    cr.set_font_size(18.);
+    // cr.set_font_size(12.);
 
     let direction = ffi::HB_DIRECTION_LTR;
     let is_backward = hb_util::hb_direction_is_backward(direction);
@@ -141,14 +153,19 @@ fn main() -> anyhow::Result<()> {
     let line_gap = libm::scalbn(extents.line_gap as f64, scale_bits);
     let leading = ascent + descent + line_gap;
 
-    cr.translate(0., ascent);
-    cr.translate(0., -leading);
+    // cr.translate(0., ascent);
+    // cr.translate(0., -leading);
 
-    cr.set_source_rgb(0., 0., 0.);
+    dbg!(ascent, descent, line_gap, leading);
+
+    cr.set_source_rgb(1., 1., 1.);
+    cr.paint().unwrap();
+    cr.set_source_rgb(0.1, 0.1, 0.1);
     // println!("{}", &text);
+    // cr.move_to(5., 20.);
 
-    for line in text.lines() {
-        cr.translate(0., leading);
+    for (no, line) in text.lines().enumerate() {
+        cr.move_to(1., 12. * no as f64 + 12.);
         dbg!(line);
         let graphemes: Vec<_> = line.grapheme_indices(true).collect();
         // dbg!(&graphemes);
@@ -279,25 +296,24 @@ fn main() -> anyhow::Result<()> {
             // dbg!(&glyphs);
             // dbg!(cluster_count, &clusters.len(), &glyphs.len());
             // cr.set_source_rgb(0.4, 0.4, 0.4);
-            // cr.show_text_glyphs(
-            //     &line,
-            //     &glyphs[..glyph_count as usize],
-            //     &clusters,
-            //     cluster_flags,
-            // )
-            // .unwrap();
+            cr.show_text_glyphs(
+                &line,
+                &glyphs[..glyph_count as usize],
+                &clusters,
+                cluster_flags,
+            )
+            .unwrap();
             // cr.set_source_rgb(0.6, 0.6, 0.6);
             // cr.show_glyphs(&glyphs[..glyph_count as usize]).unwrap();
             // cr.set_source_rgb(0.2, 0.6, 0.8);
-            cr.show_text(&line).unwrap();
-            // break;
+            // cr.show_text(&line).unwrap();
         }
     }
     unsafe {
         ffi::hb_buffer_destroy(buf);
         ffi::hb_font_destroy(font);
-        ffi::hb_face_destroy(face);
-        ffi::hb_blob_destroy(blob);
+        // ffi::hb_face_destroy(face);
+        // ffi::hb_blob_destroy(blob);
     }
 
     let mut f = std::fs::OpenOptions::new()
@@ -308,15 +324,15 @@ fn main() -> anyhow::Result<()> {
         .open("/tmp/emoji.png")
         .unwrap();
     target.write_to_png(&mut f).unwrap();
-    let cfgs = viuer::Config::default();
-    viuer::print_from_file("/tmp/emoji.png", &cfgs).unwrap();
+    // let cfgs = viuer::Config::default();
+    // viuer::print_from_file("/tmp/emoji.png", &cfgs).unwrap();
     Ok(())
 }
 
-fn create_scaled_font(font: *mut ffi::hb_font_t) -> cairo::ScaledFont {
-    let font = unsafe { ffi::hb_font_reference(font) };
+fn create_scaled_font(font_face: &cairo::FontFace) -> cairo::ScaledFont {
+    // let font = unsafe { ffi::hb_font_reference(font) };
 
-    let font_face = create_ft_font_face(font).unwrap();
+    // let font_face = create_ft_font_face(font).unwrap();
 
     let ctm = cairo::Matrix::identity();
     let mut font_matrix = cairo::Matrix::default();
@@ -333,13 +349,24 @@ fn create_scaled_font(font: *mut ffi::hb_font_t) -> cairo::ScaledFont {
     scaled_font
 }
 
-fn create_ft_font_face(font: *mut ffi::hb_font_t) -> anyhow::Result<cairo::FontFace> {
-    // Init the library
-    let lib = freetype::Library::init().unwrap();
-    // Load a font face
-    let face = lib.new_face("/home/songww/.local/share/fonts/LXGWWenKai-Regular.ttf", 0)?;
+fn create_user_scaled_font(font: *mut ffi::hb_font_t) -> cairo::ScaledFont {
+    let font = unsafe { ffi::hb_font_reference(font) };
 
-    unsafe { cairo::FontFace::create_from_ft(&face) }.map_err(|err| anyhow::anyhow!(err))
+    let font_face = create_user_font_face(font).unwrap();
+
+    let ctm = cairo::Matrix::identity();
+    let mut font_matrix = cairo::Matrix::default();
+    font_matrix.scale(128., 128.);
+
+    let mut options = cairo::FontOptions::new().unwrap();
+    options.set_hint_style(cairo::HintStyle::None);
+    options.set_hint_metrics(cairo::HintMetrics::Off);
+
+    let scaled_font = cairo::ScaledFont::new(&font_face, &font_matrix, &ctm, &options).unwrap();
+
+    // set user data
+
+    scaled_font
 }
 
 fn create_user_font_face(font: *mut ffi::hb_font_t) -> anyhow::Result<cairo::UserFontFace> {
